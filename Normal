@@ -1,0 +1,91 @@
+#include "painlessMesh.h"
+
+#define MESH_PREFIX     "whateverYouLike"
+#define MESH_PASSWORD   "somethingSneaky"
+#define MESH_PORT       5555
+
+Scheduler userScheduler;  // Task scheduler
+painlessMesh mesh;        // Mesh network object
+
+// Global variable to store the current gateway ID.
+uint32_t storedGatewayId = 0;
+
+//*************** Task: Send Sensor Data ********************
+// This task reads sensor data and sends it directly to the gateway.
+Task taskSendSensorData(TASK_SECOND * 1, TASK_FOREVER, []() {
+  if (storedGatewayId != 0) {
+    int sensorValue = 1;  // Read sensor value from A0
+    String msg = "Sensor value from node " + String(mesh.getNodeId()) + ": " + String(sensorValue);
+    mesh.sendSingle(storedGatewayId, msg);
+    Serial.println("Sent sensor data: " + msg);
+  } else {
+    Serial.println("Gateway ID unknown. Waiting for gateway info...");
+  }
+  // Schedule next transmission at a random interval between 1 and 5 seconds.
+  taskSendSensorData.setInterval(random(TASK_SECOND, TASK_SECOND * 5));
+});
+
+//*************** Callback: Received Messages ********************
+void receivedCallback(uint32_t from, String &msg) {
+  // If the message is a gateway broadcast:
+  if (msg.startsWith("GATEWAY:")) {
+    uint32_t id = msg.substring(8).toInt();
+    // Only update and print if the gateway ID is new.
+    if (id != 0 && id != storedGatewayId) {
+      storedGatewayId = id;
+      Serial.printf("Updated stored gateway ID to: %u\n", storedGatewayId);
+    }
+    // If it's a gateway broadcast and there's no change, do nothing.
+  } else {
+    // For non-gateway messages, print the received message.
+    Serial.printf("Received from %u: %s\n", from, msg.c_str());
+  }
+}
+
+
+//*************** Callback: New Connection ********************
+// When a new node connects, send it the current gateway ID directly.
+void newConnectionCallback(uint32_t nodeId) {
+  Serial.printf("New connection: nodeId = %u\n", nodeId);
+  if (storedGatewayId != 0) {
+    String msg = "GATEWAY:" + String(storedGatewayId);
+    mesh.sendSingle(nodeId, msg);
+    Serial.printf("Sent gateway info to node %u: %s\n", nodeId, msg.c_str());
+  }
+}
+
+void changedConnectionCallback() {
+  Serial.println("Connections changed");
+}
+
+void nodeTimeAdjustedCallback(int32_t offset) {
+  Serial.printf("Time adjusted, offset = %d\n", offset);
+}
+
+//*************** setup() *****************************
+void setup() {
+  Serial.begin(115200);
+  
+  // Set debug message types.
+  mesh.setDebugMsgTypes(ERROR | STARTUP);
+  
+  // Initialize the mesh network.
+  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
+  
+  // Register callbacks.
+  mesh.onReceive(&receivedCallback);
+  mesh.onNewConnection(&newConnectionCallback);
+  mesh.onChangedConnections(&changedConnectionCallback);
+  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
+  
+  // Add and enable the sensor data task.
+  userScheduler.addTask(taskSendSensorData);
+  taskSendSensorData.enable();
+  
+  Serial.printf("Normal Node ID: %u\n", mesh.getNodeId());
+}
+
+void loop() {
+  // Continuously update the mesh network.
+  mesh.update();
+}
