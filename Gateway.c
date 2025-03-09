@@ -17,7 +17,7 @@ painlessMesh mesh;        // Mesh network object
 Task taskGatewayBroadcast( TASK_SECOND * 10, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
-  Serial.println("Gateway broadcast: " + msg);
+  // Serial.println("Gateway broadcast: " + msg); 
 });
 
 //*************** Callback Functions ********************
@@ -40,7 +40,7 @@ void changedConnectionCallback() {
 
 // Called when the node's time is adjusted.
 void nodeTimeAdjustedCallback(int32_t offset) {
-  Serial.printf("Time adjusted, offset = %d\n", offset);
+  //Serial.printf("Time adjusted, offset = %d\n", offset);
 }
 
 //*************** setup() *****************************
