@@ -93,7 +93,6 @@ void switchToMeshPhase() {
   taskGatewayBroadcast.enable();
   Serial.printf("[MESH] Node ID: %u\n", mesh.getNodeId());
   stateStartTime = millis();
-  
 }
 
 // Upload one message from the queue via HTTP POST

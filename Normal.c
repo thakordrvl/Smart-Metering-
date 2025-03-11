@@ -16,14 +16,14 @@ const unsigned long gatewayBroadcastTimeout = 30000; // 30 seconds
 
 //*************** Device Configuration ********************
 // Change `deviceNumber` for each device before uploading.
-const String deviceType = "ESP32";  // Change to "ESP8266" if applicable
+const String deviceType = "ESP8266";  // Change to "ESP8266" if applicable
 const int deviceNumber = 1;         // Change this for each device (e.g., 1, 2, 3, ...)
 
 //*************** Task: Send Sensor Data ********************
 // This task reads sensor data and sends it directly to the gateway,
 // but only if the gateway info is recent. If the stored gateway ID is stale,
 // it clears the value and prints a message.
-Task taskSendSensorData(TASK_SECOND * 1, TASK_FOREVER, []() {
+Task taskSendSensorData(TASK_SECOND * 5, TASK_FOREVER, []() {
   // Check if the stored gateway broadcast is stale.
   if (storedGatewayId != 0 && (millis() - lastGatewayReceivedTime) > gatewayBroadcastTimeout) {
     Serial.printf("[%s-%d] Gateway broadcast timeout. Clearing stored gateway ID.\n", deviceType.c_str(), deviceNumber);

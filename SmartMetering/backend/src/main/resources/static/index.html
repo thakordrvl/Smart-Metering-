@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Live Mesh Data Dashboard</title>
+  <!-- Include SockJS and STOMP.js for WebSocket communication -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+  <style>
+    body {
+      background: #f4f7f9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .card-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      width: 250px;
+      padding: 15px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      color: #4c8bf5;
+    }
+    .card p {
+      margin: 5px 0;
+      color: #555;
+      font-size: 16px;
+    }
+    .timestamp {
+      font-size: 12px;
+      color: #888;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+<h1>Live Mesh Data Dashboard</h1>
+<div class="card-container" id="cardContainer">
+  <!-- Device cards will be dynamically inserted here -->
+</div>
+
+<script>
+  // Object to hold the latest data for each device (keyed by device identifier, e.g., "ESP32-5")
+  var devices = {};
+
+  // Function to update the dashboard cards
+  function updateCards() {
+    var container = document.getElementById("cardContainer");
+    container.innerHTML = ""; // Clear current cards
+    for (var device in devices) {
+      var d = devices[device];
+      var cardHtml = `
+        <div class="card">
+          <h2>${device}</h2>
+          <p>Sensor: ${d.sensorValue}</p>
+          <p>RSSI: ${d.rssi}</p>
+          <p>Free Heap: ${d.freeHeap}</p>
+          <p class="timestamp">Last Update: ${d.timestamp}</p>
+        </div>
+      `;
+      container.innerHTML += cardHtml;
+    }
+    console.log("Dashboard updated:", devices);
+  }
+
+  // Function to process incoming data string.
+  // Expected formats:
+  // "From 993203177: Sensor value from ESP32-5 (993203177): 42"
+  // "From 993203177: Health from ESP32-5 | RSSI: -45 | FreeHeap: 210000"
+  function processData(message) {
+    console.log("Processing message:", message);
+    // Remove leading "From <num>:" part
+    var regex = /^From\s+\d+:\s+(.*)$/;
+    var match = message.match(regex);
+    if (!match) {
+      console.log("Message format not recognized:", message);
+      return;
+    }
+    var infoStr = match[1];
+
+    // Extract device identifier (e.g., "ESP32-5")
+    var deviceRegex = /from\s+(ESP(?:32|8266)-\d+)/i;
+    var deviceMatch = infoStr.match(deviceRegex);
+    if (!deviceMatch) {
+      console.log("Device identifier not found in message:", message);
+      return;
+    }
+    var deviceId = deviceMatch[1];  // e.g., "ESP32-5"
+
+    // Initialize device data if not already present.
+    if (!devices[deviceId]) {
+      devices[deviceId] = { sensorValue: "", rssi: "", freeHeap: "", timestamp: "" };
+    }
+
+    // Update sensor value if available.
+    if (infoStr.indexOf("Sensor value") !== -1) {
+      var parts = infoStr.split(':');
+      if (parts.length >= 2) {
+        devices[deviceId].sensorValue = parts[parts.length - 1].trim();
+      }
+    }
+    // Update health metrics if available.
+    if (infoStr.indexOf("Health from") !== -1) {
+      var segments = infoStr.split('|');
+      if (segments.length >= 3) {
+        devices[deviceId].rssi = segments[1].replace("RSSI:", "").trim();
+        devices[deviceId].freeHeap = segments[2].replace("FreeHeap:", "").trim();
+      }
+    }
+    // Use the current time as the timestamp (for live data)
+    devices[deviceId].timestamp = new Date().toLocaleTimeString();
+    updateCards();
+  }
+
+  // On page load, fetch initial data from the backend GET endpoint.
+  // This ensures that even after a refresh, data stored in the database is displayed.
+  fetch('/data')
+    .then(response => response.json())
+    .then(dataList => {
+        console.log("Initial data loaded:", dataList);
+        dataList.forEach(function(item) {
+            // If the data from the backend includes a timestamp, you can use it.
+            // Otherwise, processData() will assign the current time.
+            processData(item.data); // Assuming each item is an object with a 'data' field
+        });
+    })
+    .catch(err => console.error("Failed to load initial data:", err));
+
+  // Set up WebSocket connection using SockJS and STOMP.
+  var socket = new SockJS('/ws');
+  var stompClient = Stomp.over(socket);
+  stompClient.connect({}, function(frame) {
+    console.log('WebSocket connected: ' + frame);
+    stompClient.subscribe('/topic/meshdata', function(message) {
+        var data = message.body;
+        console.log("WebSocket received:", data);
+        processData(data);
+    });
+  });
+</script>
+</body>
+</html>
