@@ -15,7 +15,7 @@ unsigned long lastGatewayReceivedTime = 0;
 const unsigned long gatewayBroadcastTimeout = 30000; // 30 seconds
 
 //*************** Device Configuration ********************
-// Change `deviceNumber` for each device before uploading.
+// Change deviceNumber for each device before uploading.
 const String deviceType = "ESP8266";  // Change to "ESP8266" if applicable
 const int deviceNumber = 1;         // Change this for each device (e.g., 1, 2, 3, ...)
 
@@ -23,10 +23,9 @@ const int deviceNumber = 1;         // Change this for each device (e.g., 1, 2, 
 // This task reads sensor data and sends it directly to the gateway,
 // but only if the gateway info is recent. If the stored gateway ID is stale,
 // it clears the value and prints a message.
-Task taskSendSensorData(TASK_SECOND * 5, TASK_FOREVER, []() {
+Task taskSendSensorData(TASK_SECOND * 10, TASK_FOREVER, []() {
   // Check if the stored gateway broadcast is stale.
   if (storedGatewayId != 0 && (millis() - lastGatewayReceivedTime) > gatewayBroadcastTimeout) {
-    Serial.printf("[%s-%d] Gateway broadcast timeout. Clearing stored gateway ID.\n", deviceType.c_str(), deviceNumber);
     storedGatewayId = 0;
   }
   
@@ -35,20 +34,17 @@ Task taskSendSensorData(TASK_SECOND * 5, TASK_FOREVER, []() {
     String msg = "Sensor value from " + deviceType + "-" + String(deviceNumber) + 
                  " (" + String(mesh.getNodeId()) + "): " + String(sensorValue);
     mesh.sendSingle(storedGatewayId, msg);
-    Serial.printf("[%s-%d] Sent sensor data: %s\n", deviceType.c_str(), deviceNumber, msg.c_str());
-  } else {
-    Serial.printf("[%s-%d] Gateway ID unknown or stale. Waiting for gateway info...\n", deviceType.c_str(), deviceNumber);
   }
   // Schedule next transmission at a random interval between 1 and 5 seconds.
-  taskSendSensorData.setInterval(random(TASK_SECOND, TASK_SECOND * 5));
+  taskSendSensorData.setInterval(random(TASK_SECOND, TASK_SECOND * 10));
 });
 
 //*************** Task: Send Health Report ********************
 // This task gathers health metrics (RSSI and free heap) and sends them to the gateway.
-Task taskSendHealth(TASK_SECOND * 5, TASK_FOREVER, []() {
+Task taskSendHealth(TASK_SECOND * 20, TASK_FOREVER, []() {
   // Check if the stored gateway broadcast is stale.
   if (storedGatewayId != 0 && (millis() - lastGatewayReceivedTime) > gatewayBroadcastTimeout) {
-    Serial.printf("[%s-%d] Gateway broadcast timeout (health task). Clearing stored gateway ID.\n", deviceType.c_str(), deviceNumber);
+    // Serial.printf("[%s-%d] Gateway broadcast timeout (health task). Clearing stored gateway ID.\n", deviceType.c_str(), deviceNumber);
     storedGatewayId = 0;
   }
 
@@ -59,12 +55,12 @@ Task taskSendHealth(TASK_SECOND * 5, TASK_FOREVER, []() {
                        " | RSSI: " + String(rssi) +
                        " | FreeHeap: " + String(freeHeap);
     mesh.sendSingle(storedGatewayId, healthMsg);
-    Serial.printf("[%s-%d] Sent health report: %s\n", deviceType.c_str(), deviceNumber, healthMsg.c_str());
+    // Serial.printf("[%s-%d] Sent health report: %s\n", deviceType.c_str(), deviceNumber, healthMsg.c_str());
   } else {
-    Serial.printf("[%s-%d] Gateway ID unknown or stale. Waiting for gateway info (health report)...\n", deviceType.c_str(), deviceNumber);
+    // Serial.printf("[%s-%d] Gateway ID unknown or stale. Waiting for gateway info (health report)...\n", deviceType.c_str(), deviceNumber);
   }
   // Schedule next health report at a random interval between 1 and 2 minutes.
-  taskSendHealth.setInterval(random(TASK_SECOND, TASK_SECOND * 10));
+  taskSendHealth.setInterval(random(TASK_SECOND, TASK_SECOND * 20));
 });
 
 //*************** Callback: Received Messages ********************
@@ -77,33 +73,25 @@ void receivedCallback(uint32_t from, String &msg) {
     // Only update and print if the gateway ID is new.
     if (id != 0 && id != storedGatewayId) {
       storedGatewayId = id;
-      Serial.printf("[%s-%d] Updated stored gateway ID to: %u\n", deviceType.c_str(), deviceNumber, storedGatewayId);
     }
     // Update the timestamp regardless of change.
     lastGatewayReceivedTime = millis();
-  } else {
-    // For non-gateway messages, print the received message.
-    Serial.printf("[%s-%d] Received from %u: %s\n", deviceType.c_str(), deviceNumber, from, msg.c_str());
   }
 }
 
 //*************** Callback: New Connection ********************
 // When a new node connects, send it the current gateway ID directly.
 void newConnectionCallback(uint32_t nodeId) {
-  Serial.printf("[%s-%d] New connection: nodeId = %u\n", deviceType.c_str(), deviceNumber, nodeId);
   if (storedGatewayId != 0) {
     String msg = "GATEWAY:" + String(storedGatewayId);
     mesh.sendSingle(nodeId, msg);
-    Serial.printf("[%s-%d] Sent gateway info to node %u: %s\n", deviceType.c_str(), deviceNumber, nodeId, msg.c_str());
   }
 }
 
 void changedConnectionCallback() {
-  Serial.printf("[%s-%d] Connections changed\n", deviceType.c_str(), deviceNumber);
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
-  //Serial.printf("[%s-%d] Time adjusted, offset = %d\n", deviceType.c_str(), deviceNumber, offset);
 }
 
 //*************** setup() *****************************
@@ -125,11 +113,8 @@ void setup() {
   // Add and enable tasks.
   userScheduler.addTask(taskSendSensorData);
   taskSendSensorData.enable();
-  
   userScheduler.addTask(taskSendHealth);
   taskSendHealth.enable();
-  
-  Serial.printf("[%s-%d] Normal Node ID: %u\n", deviceType.c_str(), deviceNumber, mesh.getNodeId());
 }
 
 void loop() {
