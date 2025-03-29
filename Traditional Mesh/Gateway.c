@@ -23,7 +23,7 @@ enum State {
 
 State currentState = MESH_PHASE;
 unsigned long stateStartTime = 0;
-const unsigned long meshPhaseDuration = 60000;   // 60 seconds for mesh phase
+const unsigned long meshPhaseDuration = 120000;   // 60 seconds for mesh phase
 const unsigned long uploadPhaseDuration = 15000; // 15 seconds for upload phase
 
 // Global objects
@@ -35,7 +35,7 @@ std::queue<String> messageQueue;  // Queue for storing incoming messages
 WiFiClient wifiClient;
 
 
-Task taskGatewayBroadcast(TASK_SECOND * 3, TASK_FOREVER, []() {
+Task taskGatewayBroadcast(TASK_SECOND * 10, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
   Serial.println("[BROADCAST] " + msg);
@@ -44,7 +44,7 @@ Task taskGatewayBroadcast(TASK_SECOND * 3, TASK_FOREVER, []() {
 // Mesh callback: store any received messages in the queue
 void receivedCallback(uint32_t from, String &msg) {
   Serial.printf("[MESH] Received from %u: %s\n", from, msg.c_str());
-  messageQueue.push("From " + String(from) + ": " + msg);
+  messageQueue.push(msg);
 }
 
 // Switch from Mesh Phase to Upload Phase

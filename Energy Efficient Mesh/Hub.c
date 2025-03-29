@@ -20,21 +20,27 @@ std::queue<uint32_t> requestQueue;     // Global queue for round-robin schedulin
 // Queue to store data messages from normal nodes for future processing
 std::queue<String> dataQueue;
 
+uint32_t gatewayId = 0;
+
+// Handshake state variables
+bool ackReceived = false;
+unsigned long ackRequestTime = 0;
+
 // Task: Broadcast HUB_ID every 3 minutes (180 seconds)
-Task taskBroadcastHubId(TASK_SECOND * 20, TASK_FOREVER, []() {
+Task taskBroadcastHubId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
   mesh.sendBroadcast(hubMsg);
   Serial.println("[BROADCAST] " + hubMsg);
 });
 
 // Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
-Task taskBroadcastUpdateHop(TASK_SECOND * 60, TASK_FOREVER, []() {
+Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
   String updateMsg = "UPDATE_HOP:0";
   mesh.sendBroadcast(updateMsg);
   Serial.println("[BROADCAST] " + updateMsg);
 });
 
-Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
+Task taskRequestData(TASK_SECOND * 75, TASK_FOREVER, []() {
   Serial.println("[HUB] Initiating data request cycle...");
   
   // If the global requestQueue is empty, rebuild it
@@ -64,6 +70,43 @@ Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
     requestQueue.push(targetNode);
   } else {
     Serial.println("[HUB] No nodes available for data request.");
+  }
+});
+
+Task taskSendDataWithAck(TASK_SECOND * 30, TASK_FOREVER, []() {
+  if (gatewayId == 0) {
+    Serial.println("[HUB] Gateway ID not known; cannot initiate handshake.");
+    return;
+  }
+  // Initiate handshake: send ACK_REQUEST to gateway
+  ackReceived = false;
+  ackRequestTime = millis();
+  String ackReq = "ACK";
+  mesh.sendSingle(gatewayId, ackReq);
+  Serial.printf("[HUB] Sent ACK_REQUEST to gateway (%u).\n", gatewayId);
+  
+  // Schedule a one-shot check for ACK in 10 seconds
+  userScheduler.addTask(taskCheckAck);
+  taskCheckAck.enableDelayed(TASK_SECOND * 20);
+});
+
+Task taskCheckAck(0, TASK_ONCE, []() {
+  if (!ackReceived) {
+    Serial.println("[HUB] No ACK received within 10 sec; scheduling retry in 15 sec.");
+    // Schedule a retry (one-shot) in 15 seconds
+    userScheduler.addTask(taskSendDataRetry);
+    taskSendDataRetry.enableDelayed(TASK_SECOND * 15);
+  } else {
+    // ACK was received; send all queued data to gateway.
+    Serial.println("[HUB] ACK received. Sending queued messages to gateway...");
+    while (!messageQueue.empty()) {
+      String dataMsg = messageQueue.front();
+      messageQueue.pop();
+      mesh.sendSingle(gatewayId, dataMsg);
+      Serial.printf("[HUB] Sent to gateway (%u): %s\n", gatewayId, dataMsg.c_str());
+    }
+
+    ackRecieved = false;
   }
 });
 
@@ -98,7 +141,15 @@ void receivedCallback(uint32_t from, String &msg) {
       }
     }
   }
-  
+
+  else if (msg.startsWith("GATEWAY:")) {
+    // Use strtoul to avoid overflow issues
+    uint32_t id = strtoul(msg.substring(8).c_str(), NULL, 10);
+    if (id != gatewayId) {
+      gatewayId = id;
+      Serial.printf("[HUB] Updated gateway ID to %u\n", gatewayId);
+    }
+  }
   // Handle data messages from normal nodes:
   // Expected format: "DATA:<deviceType>-<deviceNumber>:Sensor=<sensorVal>:Hop=<hopCount>"
   else if (msg.startsWith("DATA:")) {
@@ -126,6 +177,15 @@ void receivedCallback(uint32_t from, String &msg) {
       // Save the entire message (or a formatted version) into the queue for future use
       dataQueue.push(msg);
       Serial.printf("[HUB] Data message queued. Queue size: %lu\n", dataQueue.size());
+    }
+  }
+
+  else if (msg.startsWith("ACK")) {
+    unsigned long ackTime = msg.substring(4).toInt();
+    // Accept any ACK if we are waiting
+    if (!ackReceived) {
+      ackReceived = true;
+      Serial.printf("[HUB] Received ACK from gateway with timestamp %lu\n", ackTime);
     }
   }
   // Optionally, handle other message types here.
@@ -156,6 +216,9 @@ void setup() {
 
   userScheduler.addTask(taskRequestData);
   taskRequestData.enable();
+
+  userScheduler.addTask(taskSendDataToGateway);
+  taskSendDataToGateway.enable();
 }
 
 void loop() {
