@@ -19,6 +19,7 @@ std::map<uint32_t, int> nodeHopCounts; // Maps node IDs to their hop counts
 std::queue<uint32_t> requestQueue;     // Global queue for round-robin scheduling
 // Queue to store data messages from normal nodes for future processing
 std::queue<String> dataQueue;
+std::queue<String> dataQueueBackup; // Backup queue for data message
 
 uint32_t gatewayId = 0;
 
@@ -40,7 +41,7 @@ Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
   Serial.println("[BROADCAST] " + updateMsg);
 });
 
-Task taskRequestData(TASK_SECOND * 75, TASK_FOREVER, []() {
+Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
   Serial.println("[HUB] Initiating data request cycle...");
   
   // If the global requestQueue is empty, rebuild it
@@ -55,8 +56,10 @@ Task taskRequestData(TASK_SECOND * 75, TASK_FOREVER, []() {
     }
     Serial.printf("[HUB] Rebuilt request queue with %lu nodes\n", requestQueue.size());
   }
+
+  int n = requestQueue.size();
   
-  if (!requestQueue.empty()) {
+  while(n--) {
     // Get the node at the front of the queue
     uint32_t targetNode = requestQueue.front();
     requestQueue.pop();
@@ -68,47 +71,42 @@ Task taskRequestData(TASK_SECOND * 75, TASK_FOREVER, []() {
     
     // Round-robin: push the target node back to the queue
     requestQueue.push(targetNode);
-  } else {
-    Serial.println("[HUB] No nodes available for data request.");
-  }
+  } 
 });
 
-Task taskSendDataWithAck(TASK_SECOND * 30, TASK_FOREVER, []() {
-  if (gatewayId == 0) {
-    Serial.println("[HUB] Gateway ID not known; cannot initiate handshake.");
-    return;
-  }
-  // Initiate handshake: send ACK_REQUEST to gateway
-  ackReceived = false;
-  ackRequestTime = millis();
-  String ackReq = "ACK";
-  mesh.sendSingle(gatewayId, ackReq);
-  Serial.printf("[HUB] Sent ACK_REQUEST to gateway (%u).\n", gatewayId);
-  
-  // Schedule a one-shot check for ACK in 10 seconds
-  userScheduler.addTask(taskCheckAck);
-  taskCheckAck.enableDelayed(TASK_SECOND * 20);
-});
 
-Task taskCheckAck(0, TASK_ONCE, []() {
-  if (!ackReceived) {
-    Serial.println("[HUB] No ACK received within 10 sec; scheduling retry in 15 sec.");
-    // Schedule a retry (one-shot) in 15 seconds
-    userScheduler.addTask(taskSendDataRetry);
-    taskSendDataRetry.enableDelayed(TASK_SECOND * 15);
-  } else {
-    // ACK was received; send all queued data to gateway.
-    Serial.println("[HUB] ACK received. Sending queued messages to gateway...");
-    while (!messageQueue.empty()) {
-      String dataMsg = messageQueue.front();
-      messageQueue.pop();
-      mesh.sendSingle(gatewayId, dataMsg);
-      Serial.printf("[HUB] Sent to gateway (%u): %s\n", gatewayId, dataMsg.c_str());
+Task SendDatatoGateway(TASK_SECOND * 15, TASK_FOREVER, [](){
+
+  Serial.println("[HUB] Sending backup data to Gateway...");
+
+
+  while(dataQueueBackup.size()){
+    if(gatewayId == 0){
+      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      break;
+    }else{
+      String backupMsg = dataQueueBackup.front();
+      dataQueueBackup.pop();
+      mesh.sendSingle(gatewayId, backupMsg);
+      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, backupMsg.c_str());
     }
+  }
 
-    ackRecieved = false;
+
+  while(dataQueue.size()){
+    if(gatewayId == 0){
+      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      break;
+    }else{
+      String Msg = dataQueue.front();
+      dataQueue.pop();
+      dataQueueBackup.push(Msg);
+      mesh.sendSingle(gatewayId, Msg);
+      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, Msg.c_str());
+    }
   }
 });
+
 
 // New connection callback: when a node connects, send it the hub id and initial hop count update
 void newConnectionCallback(uint32_t nodeId) {
@@ -179,15 +177,6 @@ void receivedCallback(uint32_t from, String &msg) {
       Serial.printf("[HUB] Data message queued. Queue size: %lu\n", dataQueue.size());
     }
   }
-
-  else if (msg.startsWith("ACK")) {
-    unsigned long ackTime = msg.substring(4).toInt();
-    // Accept any ACK if we are waiting
-    if (!ackReceived) {
-      ackReceived = true;
-      Serial.printf("[HUB] Received ACK from gateway with timestamp %lu\n", ackTime);
-    }
-  }
   // Optionally, handle other message types here.
 }
 
@@ -217,8 +206,8 @@ void setup() {
   userScheduler.addTask(taskRequestData);
   taskRequestData.enable();
 
-  userScheduler.addTask(taskSendDataToGateway);
-  taskSendDataToGateway.enable();
+  userScheduler.addTask(SendDatatoGateway);
+  SendDatatoGateway.enable();
 }
 
 void loop() {

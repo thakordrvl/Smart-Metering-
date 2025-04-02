@@ -1,6 +1,6 @@
 #include "painlessMesh.h"
-#include <ESP8266WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
-#include <ESP8266HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
+#include <WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
+#include <HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
 #include <queue>
 
 //*************** Mesh Configuration *******************
@@ -35,16 +35,17 @@ std::queue<String> messageQueue;  // Queue for storing incoming messages
 WiFiClient wifiClient;
 
 
-Task taskGatewayBroadcast(TASK_SECOND * 3, TASK_FOREVER, []() {
+Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
-  Serial.println("[BROADCAST] " + msg);
 });
 
 // Mesh callback: store any received messages in the queue
 void receivedCallback(uint32_t from, String &msg) {
-  Serial.printf("[MESH] Received from %u: %s\n", from, msg.c_str());
-  messageQueue.push("From " + String(from) + ": " + msg);
+  if (msg.startsWith("DATA")){
+  Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
+  messageQueue.push(msg);
+  }
 }
 
 // Switch from Mesh Phase to Upload Phase

@@ -19,7 +19,7 @@ int myHopCount = 256; // initially large
 // When a new node connects to this node, send it the hub id and the current hop count
 void newConnectionCallback(uint32_t nodeId) {
   // First, send hub id message (retrieved directly using mesh.getNodeId())
-  String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
+  String hubMsg = "HUB_ID:" + String(myHubId);
   mesh.sendSingle(nodeId, hubMsg);
   // Serial.printf("[NODE] Sent HUB_ID to node %u: %s\n", nodeId, hubMsg.c_str());
   
@@ -69,8 +69,9 @@ void receivedCallback(uint32_t from, String &msg) {
   else if (msg.startsWith("REQUEST")) {
     int sensorVal = 18;
     String sensorMsg = "DATA:" + deviceType + "-" + String(deviceNumber) +
-                       ":Sensor=" + String(sensorVal) +
-                       ":Hop=" + String(myHopCount);
+    ":Sensor=" + String(sensorVal) +
+    ":Hop=" + String(myHopCount) +
+    ":Time=" + String(millis());
     if (myHubId != 0) {
       mesh.sendSingle(myHubId, sensorMsg);
       Serial.println("[NODE] Sent sensor data on REQUEST_SEND");
