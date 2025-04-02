@@ -28,17 +28,17 @@ bool ackReceived = false;
 unsigned long ackRequestTime = 0;
 
 // Task: Broadcast HUB_ID every 3 minutes (180 seconds)
-Task taskBroadcastHubId(TASK_SECOND * 30, TASK_FOREVER, []() {
+Task taskBroadcastHubId(TASK_SECOND * 60, TASK_FOREVER, []() {
   String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
   mesh.sendBroadcast(hubMsg);
-  Serial.println("[BROADCAST] " + hubMsg);
+  // Serial.println("[BROADCAST] " + hubMsg);
 });
 
 // Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
-Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
+Task taskBroadcastUpdateHop(TASK_SECOND * 15, TASK_FOREVER, []() {
   String updateMsg = "UPDATE_HOP:0";
   mesh.sendBroadcast(updateMsg);
-  Serial.println("[BROADCAST] " + updateMsg);
+  // Serial.println("[BROADCAST] " + updateMsg);
 });
 
 Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
@@ -72,6 +72,11 @@ Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
     // Round-robin: push the target node back to the queue
     requestQueue.push(targetNode);
   } 
+});
+
+Task taskclearRequestQueue(TASK_SECOND * 45, TASK_FOREVER, []() {
+    while(!requestQueue.empty()) 
+      requestQueue.pop();
 });
 
 
@@ -133,10 +138,9 @@ void receivedCallback(uint32_t from, String &msg) {
     if (secondColon != -1) {
       int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
       uint32_t senderId = strtoul(msg.substring(secondColon + 1).c_str(), NULL, 10);
-      if (nodeHopCounts.find(senderId) == nodeHopCounts.end() || receivedHop < nodeHopCounts[senderId]) {
-        nodeHopCounts[senderId] = receivedHop;
-        Serial.printf("[HUB] Node %u updated hop count to %d\n", senderId, receivedHop);
-      }
+      nodeHopCounts[senderId] = receivedHop;
+      requestQueue.push(senderId);
+      Serial.printf("[HUB] Node %u updated hop count to %d\n", senderId, receivedHop);
     }
   }
 
@@ -208,6 +212,11 @@ void setup() {
 
   userScheduler.addTask(SendDatatoGateway);
   SendDatatoGateway.enable();
+
+  userScheduler.addTask(taskclearRequestQueue);
+  taskclearRequestQueue.enable();
+
+  
 }
 
 void loop() {

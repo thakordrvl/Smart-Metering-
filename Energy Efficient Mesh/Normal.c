@@ -9,12 +9,25 @@ painlessMesh mesh;
 
 // Device configuration (set before upload)
 const String deviceType = "ESP8266";
-const int deviceNumber = 2; // adjust for each node
+const int deviceNumber = 1; // adjust for each node
 
 // Local state variables
 uint32_t myHubId = 0; // the current hub node id received in update
 int myHopCount = 256; // initially large
 
+
+Task taskResetHopCount(TASK_SECOND * 60, TASK_FOREVER, []() {
+  myHopCount = 256; // reset hop count to a large value
+  // Serial.println("[BROADCAST] " + hubMsg);
+});
+
+
+Task CheckNeighbour(TASK_SECOND * 15, TASK_FOREVER, [](){
+  if(myHopCount == 256){
+    string help_msg = "HELP_ME";
+    mesh.sendBroadcast(help_msg);
+  }
+});
 
 // When a new node connects to this node, send it the hub id and the current hop count
 void newConnectionCallback(uint32_t nodeId) {
@@ -79,9 +92,14 @@ void receivedCallback(uint32_t from, String &msg) {
       Serial.println("[NODE] Hub ID not set, cannot respond to REQUEST_SEND");
     }
   } 
+
+  else if(msg.startsWith("HELP_ME")){
+    String updateMsg = "UPDATE_HOP:" + String(myHopCount);
+    mesh.sendSingle(from, updateMsg);
+  }
 }
 
-void setup() {
+void setup() {  
   Serial.begin(115200);
   mesh.setDebugMsgTypes(STARTUP); // only minimal debug info
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
