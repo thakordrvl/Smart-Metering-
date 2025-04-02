@@ -22,7 +22,7 @@ Task taskResetHopCount(TASK_SECOND * 60, TASK_FOREVER, []() {
 });
 
 
-Task CheckNeighbour(TASK_SECOND * 15, TASK_FOREVER, [](){
+Task HelpFromNeighbour(TASK_SECOND * 15, TASK_FOREVER, [](){
   if(myHopCount == 256){
     string help_msg = "HELP_ME";
     mesh.sendBroadcast(help_msg);
@@ -109,6 +109,13 @@ void setup() {
   mesh.onReceive(&receivedCallback);
   // Set up new connection callback to send hub and hop count messages individually
   mesh.onNewConnection(&newConnectionCallback);
+
+  userScheduler.addTask(taskResetHopCount);
+  taskResetHopCount.enable();
+
+  userScheduler.addTask(HelpFromNeighbour);
+  HelpFromNeighbour.enable();
+
 }
 
 void loop() {
