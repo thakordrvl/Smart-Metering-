@@ -89,6 +89,7 @@ void switchToMeshPhase() {
   WiFi.mode(WIFI_AP);
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
+  mesh.setContainsRoot(true);
   mesh.onReceive(&receivedCallback);
   userScheduler.addTask(taskGatewayBroadcast);
   taskGatewayBroadcast.enable();
