@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <Arduino.h>
+#include <set>
 
 // Mesh network configuration
 #define MESH_PREFIX     "whateverYouLike"
@@ -19,6 +20,7 @@ std::queue<uint32_t> requestQueue;     // Global queue for round-robin schedulin
 // Queue to store data messages from normal nodes for future processing
 std::queue<String> dataQueue;
 std::queue<String> dataQueueBackup; // Backup queue for data message
+std::set<uint32_t> directNeighbors;
 
 uint32_t gatewayId = 0;
 uint32_t sequenceNumber = 1;  // Global sequence number (1 to 1000)
@@ -26,14 +28,13 @@ uint32_t sequenceNumber = 1;  // Global sequence number (1 to 1000)
 
 void sendToAllNeighbors(const String &msg) {
   // Retrieve the list of currently connected nodes (neighbors)
-   std::list<uint32_t> neighborList = mesh.getNodeList();
   
   // Log the outgoing message
   Serial.print("[SEND] Message: ");
   Serial.println(msg);
   
   // Iterate through the neighbor list and send the message to each neighbor individually
-  for (uint32_t node : neighborList) {
+  for (uint32_t node : directNeighbors) {
     Serial.print("[SEND] Sending to node: ");
     Serial.println(node);
     mesh.sendSingle(node, msg);
@@ -68,7 +69,7 @@ Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
 });
 
 Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
-  Serial.println("[HUB] Initiating data request cycle...");
+  Serial.println("[HUB] Initiating data request cycle..."); 
   
   // If the global requestQueue is empty, rebuild it
   if (requestQueue.empty()) {
@@ -124,12 +125,21 @@ Task SendDatatoGateway(TASK_SECOND * 30, TASK_FOREVER, [](){
 // New connection callback: when a node connects, send it the hub id and initial hop count update
 void newConnectionCallback(uint32_t nodeId) {
   Serial.printf("[HUB] New connection: node %u\n", nodeId);
-  
+  // Add the new node to the direct neighbors list
+  directNeighbors.insert(nodeId);
+
   String initMsg = "HUB_ID:" + String(mesh.getNodeId());
   mesh.sendSingle(nodeId, initMsg);
   
   String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber);
   mesh.sendSingle(nodeId, updateMsg);
+}
+
+
+void droppedConnectionCallback(uint32_t nodeId) {
+  Serial.print("Connection dropped: ");
+  Serial.println(nodeId);
+  directNeighbors.erase(nodeId);
 }
 
 // Received callback: Process incoming messages from normal nodes.
@@ -184,7 +194,7 @@ void setup() {
   // Set up callbacks
   mesh.onReceive(&receivedCallback);
   mesh.onNewConnection(&newConnectionCallback);
-
+  mesh.onDroppedConnection(&droppedConnectionCallback);
   
   // Add and enable broadcast tasks (each running every 3 minutes)
   userScheduler.addTask(taskBroadcastHubId);

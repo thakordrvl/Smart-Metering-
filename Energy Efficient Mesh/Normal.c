@@ -1,4 +1,5 @@
 #include "painlessMesh.h"
+#include <set>
 
 #define MESH_PREFIX     "whateverYouLike"
 #define MESH_PASSWORD   "somethingSneaky"
@@ -16,21 +17,23 @@ const int deviceNumber = 1; // adjust for each node
 uint8_t myHopCount = 255;
 uint32_t lastSeqNum = 0;
 uint32_t myHubId = 0;  // Set this when you receive HUB_ID
+std::set<uint32_t> directNeighbors;
 
 
 void sendToAllNeighbors(const String &msg) {
   // Retrieve the list of currently connected nodes (neighbors)
-   std::list<uint32_t> neighborList = mesh.getNodeList();
   
   // Log the outgoing message
   Serial.print("[SEND] Message: ");
   Serial.println(msg);
   
   // Iterate through the neighbor list and send the message to each neighbor individually
-  for (uint32_t node : neighborList) {
-    Serial.print("[SEND] Sending to node: ");
-    Serial.println(node);
-    mesh.sendSingle(node, msg);
+  for (uint32_t node : directNeighbors) {
+    if(node!=myHubId){
+      Serial.print("[SEND] Sending to node: ");
+      Serial.println(node);
+      mesh.sendSingle(node, msg);
+    }
   }
 }
 
@@ -64,13 +67,25 @@ void HopCountUpdated(int receivedHop){
 
 // When a new node connects to this node, send it the hub id and the current hop count
 void newConnectionCallback(uint32_t nodeId) {
-  // Send hub id message using the current node's ID (assuming the hub's own ID is the one running this code)
-  String hubMsg = "HUB_ID:" + String(myHubId);
-  mesh.sendSingle(nodeId, hubMsg);
+  // Always add the node to direct neighbors
+  directNeighbors.insert(nodeId);
+  Serial.printf("[NODE] New connection from node %u\n", nodeId);
+
+  // Only send hub-specific messages if hub info is available.
+  if (myHubId != 0 && lastSeqNum != 0 && nodeId != myHubId) {
+    String hubMsg = "HUB_ID:" + String(myHubId);
+    mesh.sendSingle(nodeId, hubMsg);
+    Serial.printf("[NODE] Sent HUB_ID message: %s\n", hubMsg.c_str());
   
-  // Then, send the current hop count message with a colon separator
-  String updateMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum);
-  mesh.sendSingle(nodeId, updateMsg);
+    String updateMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum);
+    mesh.sendSingle(nodeId, updateMsg);
+    Serial.printf("[NODE] Sent update message: %s\n", updateMsg.c_str());
+  }
+}
+
+void droppedConnectionCallback(uint32_t nodeId) {
+  Serial.printf("[NODE] Connection dropped from node %u\n", nodeId);
+  directNeighbors.erase(nodeId);
 }
 
 // When a message is received
@@ -137,7 +152,7 @@ void setup() {
   mesh.onReceive(&receivedCallback);
   // Set up new connection callback to send hub and hop count messages individually
   mesh.onNewConnection(&newConnectionCallback);
-
+  mesh.onDroppedConnection(&droppedConnectionCallback);
 }
 
 void loop() {

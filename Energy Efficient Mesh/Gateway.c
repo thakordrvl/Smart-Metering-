@@ -25,6 +25,7 @@ State currentState = MESH_PHASE;
 unsigned long stateStartTime = 0;
 const unsigned long meshPhaseDuration = 60000;   // 60 seconds for mesh phase
 const unsigned long uploadPhaseDuration = 15000; // 15 seconds for upload phase
+uint32_t myHubId = 0;  // Set this when you receive HUB_ID
 
 // Global objects
 Scheduler userScheduler;
@@ -36,8 +37,15 @@ WiFiClient wifiClient;
 
 
 Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
-  String msg = "GATEWAY:" + String(mesh.getNodeId());
-  mesh.sendBroadcast(msg);
+  if(myHubId == 0) {
+    Serial.println("[GATEWAY] No hub ID set, cannot send broadcast.");
+    return;
+  }
+  else{
+    String msg = "GATEWAY:" + String(mesh.getNodeId());
+    mesh.sendSingle(msg,myHubId);
+    Serial.printf("[GATEWAY] Sending to hub (%u): %s\n", myHubId, msg.c_str());
+  }
 });
 
 // Mesh callback: store any received messages in the queue
@@ -45,6 +53,15 @@ void receivedCallback(uint32_t from, String &msg) {
   if (msg.startsWith("DATA")){
   Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
   messageQueue.push(msg);
+  }
+
+  else if (msg.startsWith("HUB_ID:")) {
+    uint32_t newHubId = msg.substring(7).toInt();
+    if (newHubId != myHubId) {
+      myHubId = newHubId;
+      String hubMsg = "HUB_ID:" + String(myHubId);
+      // Serial.printf("[NODE] Updated Hub ID to %u, broadcasting: %s\n", myHubId, hubMsg.c_str());
+    }
   }
 }
 
