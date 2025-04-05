@@ -23,6 +23,23 @@ std::queue<String> dataQueueBackup; // Backup queue for data message
 uint32_t gatewayId = 0;
 uint32_t sequenceNumber = 1;  // Global sequence number (1 to 1000)
 
+
+void sendToAllNeighbors(const String &msg) {
+  // Retrieve the list of currently connected nodes (neighbors)
+   std::list<uint32_t> neighborList = mesh.getNodeList();
+  
+  // Log the outgoing message
+  Serial.print("[SEND] Message: ");
+  Serial.println(msg);
+  
+  // Iterate through the neighbor list and send the message to each neighbor individually
+  for (uint32_t node : neighborList) {
+    Serial.print("[SEND] Sending to node: ");
+    Serial.println(node);
+    mesh.sendSingle(node, msg);
+  }
+}
+
 void generateRequestList() {
   std::vector<std::pair<uint32_t, int>> nodes(nodeHopCounts.begin(), nodeHopCounts.end());
   std::sort(nodes.begin(), nodes.end(), [](const auto &a, const auto &b) {
@@ -46,11 +63,11 @@ Task taskBroadcastHubId(TASK_SECOND * 60, TASK_FOREVER, []() {
 // Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
 Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
   String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber);
-  mesh.sendBroadcast(updateMsg);
+  sendToAllNeighbors(updateMsg);
   sequenceNumber = (sequenceNumber % MAX_SEQ) + 1;
 });
 
-Task taskRequestData(TASK_SECOND * 30, TASK_FOREVER, []() {
+Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
   Serial.println("[HUB] Initiating data request cycle...");
   
   // If the global requestQueue is empty, rebuild it
@@ -159,7 +176,7 @@ void setup() {
 
   // Initialize mesh network
  
-  mesh.setDebugMsgTypes(ERROR | STARTUP | CONNECTION | COMMUNICATION);
+  mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
   mesh.setRoot(true);
   Serial.printf("[HUB] My Node ID: %u\n", mesh.getNodeId());

@@ -93,7 +93,7 @@ void switchToMeshPhase() {
   mesh.onReceive(&receivedCallback);
   userScheduler.addTask(taskGatewayBroadcast);
   taskGatewayBroadcast.enable();
-  Serial.printf("[MESH] Node ID: %u\n", mesh.getNodeId());
+  Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
   stateStartTime = millis();
 }
 
@@ -128,7 +128,7 @@ void uploadData() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Starting Mesh/Upload Cycle");
+  Serial.println("Starting Gateway/Upload Cycle");
   // Start mesh network in AP mode for mesh operation
   // Start in Mesh Phase.
   switchToMeshPhase();

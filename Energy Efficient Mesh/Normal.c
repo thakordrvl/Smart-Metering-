@@ -4,9 +4,6 @@
 #define MESH_PASSWORD   "somethingSneaky"
 #define MESH_PORT       5555
 #define MAX_SEQ 1000
-// #define DEVICE_NUMBER 2  // Change this per device
-
-
 
 Scheduler userScheduler;
 painlessMesh mesh;
@@ -19,6 +16,23 @@ const int deviceNumber = 1; // adjust for each node
 uint8_t myHopCount = 255;
 uint32_t lastSeqNum = 0;
 uint32_t myHubId = 0;  // Set this when you receive HUB_ID
+
+
+void sendToAllNeighbors(const String &msg) {
+  // Retrieve the list of currently connected nodes (neighbors)
+   std::list<uint32_t> neighborList = mesh.getNodeList();
+  
+  // Log the outgoing message
+  Serial.print("[SEND] Message: ");
+  Serial.println(msg);
+  
+  // Iterate through the neighbor list and send the message to each neighbor individually
+  for (uint32_t node : neighborList) {
+    Serial.print("[SEND] Sending to node: ");
+    Serial.println(node);
+    mesh.sendSingle(node, msg);
+  }
+}
 
 bool isNewer(uint16_t newSeq, uint16_t lastSeq) {
   if (lastSeq == 0)
@@ -38,7 +52,7 @@ bool isNewer(uint16_t newSeq, uint16_t lastSeq) {
 void HopCountUpdated(int receivedHop){
   myHopCount = receivedHop + 1;
   String broadcastMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum);
-  mesh.sendBroadcast(broadcastMsg);
+  sendToAllNeighbors(broadcastMsg);
   Serial.printf("[NODE] Updated hop count to %d, broadcasting: %s\n", myHopCount, broadcastMsg.c_str());
   
   if (myHubId != 0) {
@@ -71,7 +85,7 @@ void receivedCallback(uint32_t from, String &msg) {
     if (newHubId != myHubId) {
       myHubId = newHubId;
       String hubMsg = "HUB_ID:" + String(myHubId);
-      mesh.sendBroadcast(hubMsg);
+      sendToAllNeighbors(hubMsg);
       // Serial.printf("[NODE] Updated Hub ID to %u, broadcasting: %s\n", myHubId, hubMsg.c_str());
     }
   }
