@@ -72,7 +72,7 @@ Task taskBroadcastHubId(TASK_SECOND * 30, TASK_FOREVER, []() {
 });
 
 // Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
-Task taskBroadcastUpdateHop(TASK_SECOND * 15, TASK_FOREVER, []() {
+Task taskBroadcastUpdateHop(TASK_SECOND * 30, TASK_FOREVER, []() {
   String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber);
   sendToAllNeighbors(updateMsg);
   sequenceNumber = (sequenceNumber % MAX_SEQ) + 1;
@@ -163,11 +163,13 @@ void receivedCallback(uint32_t from, String &msg) {
   if (msg.startsWith("UPDATE_HOP_HUB:")) {
     int firstColon = msg.indexOf(':');
     int secondColon = msg.indexOf(':', firstColon + 1);
-    if (secondColon != -1) {
-      int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
-      uint32_t senderId = strtoul(msg.substring(secondColon + 1).c_str(), NULL, 10);
-      nodeHopCounts[senderId] = receivedHop;
-      Serial.printf("[HUB] Node %u updated hop count to %d\n", senderId, receivedHop);
+    int thirdColon = msg.indexOf(':', secondColon + 1);
+
+    if (secondColon != -1 && thirdColon != -1) {
+        int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
+        uint32_t senderId = strtoul(msg.substring(secondColon + 1, thirdColon).c_str(), NULL, 10);
+
+        nodeHopCounts[senderId] = receivedHop;
     }
   }
 

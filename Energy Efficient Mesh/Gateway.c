@@ -43,7 +43,7 @@ Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
   }
   else{
     String msg = "GATEWAY:" + String(mesh.getNodeId());
-    mesh.sendSingle(msg,myHubId);
+    mesh.sendSingle(myHubId,msg);
     Serial.printf("[GATEWAY] Sending to hub (%u): %s\n", myHubId, msg.c_str());
   }
 });
@@ -59,7 +59,6 @@ void receivedCallback(uint32_t from, String &msg) {
     uint32_t newHubId = msg.substring(7).toInt();
     if (newHubId != myHubId) {
       myHubId = newHubId;
-      String hubMsg = "HUB_ID:" + String(myHubId);
       // Serial.printf("[NODE] Updated Hub ID to %u, broadcasting: %s\n", myHubId, hubMsg.c_str());
     }
   }
