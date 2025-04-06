@@ -26,6 +26,16 @@ uint32_t gatewayId = 0;
 uint32_t sequenceNumber = 1;  // Global sequence number (1 to 1000)
 
 
+void broadcastFreshMessage() {
+  // Construct a FRESH message. Optionally include the hub's Node ID.
+  String freshMsg = "FRESH:" + String(mesh.getNodeId());
+  // You can use sendBroadcast() if you want to reach all nodes in the mesh.
+  // Or use your sendToAllNeighbors() function if you want to limit it to direct neighbors.
+  mesh.sendBroadcast(freshMsg);
+  Serial.printf("[HUB] Broadcasting FRESH message: %s\n", freshMsg.c_str());
+}
+
+
 void sendToAllNeighbors(const String &msg) {
   // Retrieve the list of currently connected nodes (neighbors)
   
@@ -55,14 +65,14 @@ void generateRequestList() {
 }
 
 // Task: Broadcast HUB_ID every 3 minutes (180 seconds)
-Task taskBroadcastHubId(TASK_SECOND * 60, TASK_FOREVER, []() {
+Task taskBroadcastHubId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
   mesh.sendBroadcast(hubMsg);
   // Serial.println("[BROADCAST] " + hubMsg);
 });
 
 // Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
-Task taskBroadcastUpdateHop(TASK_SECOND * 75, TASK_FOREVER, []() {
+Task taskBroadcastUpdateHop(TASK_SECOND * 15, TASK_FOREVER, []() {
   String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber);
   sendToAllNeighbors(updateMsg);
   sequenceNumber = (sequenceNumber % MAX_SEQ) + 1;
@@ -208,6 +218,8 @@ void setup() {
 
   userScheduler.addTask(SendDatatoGateway);
   SendDatatoGateway.enable();
+
+  broadcastFreshMessage();
 }
 
 void loop() {

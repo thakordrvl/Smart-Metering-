@@ -11,7 +11,7 @@ painlessMesh mesh;
 
 // Device configuration (set before upload)
 const String deviceType = "ESP32";
-const int deviceNumber = 1; // adjust for each node
+const int deviceNumber = 1 // adjust for each node
 
 // Local state variables
 uint8_t myHopCount = 255;
@@ -20,7 +20,7 @@ uint32_t myHubId = 0;  // Set this when you receive HUB_ID
 std::set<uint32_t> directNeighbors;
 
 
-void sendToAllNeighbors(const String &msg) {
+void sendToAllNeighbors(String &msg) {
   // Retrieve the list of currently connected nodes (neighbors)
   
   // Log the outgoing message
@@ -37,19 +37,18 @@ void sendToAllNeighbors(const String &msg) {
   }
 }
 
+
 bool isNewer(uint16_t newSeq, uint16_t lastSeq) {
-  if (lastSeq == 0)
-    return true; // Accept the first sequence number.
-  
-  // If there's no wrap-around, newSeq is newer.
-  if(newSeq > lastSeq)
+
+  if(newSeq>lastSeq)
     return true;
 
-  if(lastSeq==1000 && newSeq>=1 && newSeq<=995)
-    return true;
-    
-  // Otherwise, calculate the difference using modulo arithmetic.
-  return false;
+  else if(newSeq==lastSeq)
+    return false;
+
+  const uint16_t HALF_MAX_SEQ = MAX_SEQ / 2;
+  return ((newSeq > lastSeq) && (newSeq - lastSeq < HALF_MAX_SEQ)) ||
+         ((lastSeq > newSeq) && (lastSeq - newSeq > HALF_MAX_SEQ));
 }
 
 void HopCountUpdated(int receivedHop){
@@ -119,7 +118,7 @@ void receivedCallback(uint32_t from, String &msg) {
         HopCountUpdated(receivedHop);
       }
 
-      else if(receivedHop + 1 < myHopCount) {
+      else if(receivedHop + 1 < myHopCount && (receivedSeq == lastSeqNum)) {
         HopCountUpdated(receivedHop);
       }
     }
@@ -139,7 +138,17 @@ void receivedCallback(uint32_t from, String &msg) {
     } else {
       Serial.println("[NODE] Hub ID not set, cannot respond to REQUEST_SEND");
     }
-  } 
+  }
+  
+  else if (msg.startsWith("FRESH:")) {
+    Serial.println("[NODE] FRESH message received. Resetting state...");
+    // Optionally parse the hub ID from the message if desired:
+    myHubId = msg.substring(6).toInt();
+    // Reset the hop count and sequence number to their defaults
+    myHopCount = 255;
+    lastSeqNum = 0;
+    // Optionally, clear direct neighbors if you want to force re-discover
+  }
 }
 
 void setup() {  
