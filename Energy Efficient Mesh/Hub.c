@@ -35,10 +35,8 @@ void broadcastFreshMessage() {
   Serial.printf("[HUB] Broadcasting FRESH message: %s\n", freshMsg.c_str());
 }
 
-
 void sendToAllNeighbors(const String &msg) {
   // Retrieve the list of currently connected nodes (neighbors)
-  
   // Log the outgoing message
   Serial.print("[SEND] Message: ");
   Serial.println(msg);
@@ -62,6 +60,36 @@ void generateRequestList() {
     requestQueue.push(p.first);
   }
   Serial.printf("[HUB] Rebuilt request queue with %lu nodes\n", requestQueue.size());
+}
+
+void SendDatatoGateway(){
+
+  Serial.println("[HUB] Sending backup data to Gateway...");
+
+  while(dataQueueBackup.size()){
+    if(gatewayId == 0){
+      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      break;
+    }else{
+      String backupMsg = dataQueueBackup.front();
+      dataQueueBackup.pop();
+      mesh.sendSingle(gatewayId, backupMsg);
+      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, backupMsg.c_str());
+    }
+  }
+
+  while(dataQueue.size()){
+    if(gatewayId == 0){
+      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      break;
+    }else{
+      String Msg = dataQueue.front();
+      dataQueue.pop();
+      dataQueueBackup.push(Msg);
+      mesh.sendSingle(gatewayId, Msg);
+      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, Msg.c_str());
+    }
+  }
 }
 
 // Task: Broadcast HUB_ID every 3 minutes (180 seconds)
@@ -93,44 +121,9 @@ Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
     
     String reqMsg = "REQUEST_SEND";
     mesh.sendSingle(targetNode, reqMsg);
-    Serial.printf("[HUB] Requesting data from node %u (hop count %d)\n",
-                  targetNode, nodeHopCounts[targetNode]);
+    Serial.printf("[HUB] Requesting data from node %u (hop count %d)\n",targetNode, nodeHopCounts[targetNode]);
   } 
 });
-
-
-Task SendDatatoGateway(TASK_SECOND * 30, TASK_FOREVER, [](){
-
-  Serial.println("[HUB] Sending backup data to Gateway...");
-
-
-  while(dataQueueBackup.size()){
-    if(gatewayId == 0){
-      Serial.println("[HUB] No gateway ID set, cannot send data.");
-      break;
-    }else{
-      String backupMsg = dataQueueBackup.front();
-      dataQueueBackup.pop();
-      mesh.sendSingle(gatewayId, backupMsg);
-      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, backupMsg.c_str());
-    }
-  }
-
-
-  while(dataQueue.size()){
-    if(gatewayId == 0){
-      Serial.println("[HUB] No gateway ID set, cannot send data.");
-      break;
-    }else{
-      String Msg = dataQueue.front();
-      dataQueue.pop();
-      dataQueueBackup.push(Msg);
-      mesh.sendSingle(gatewayId, Msg);
-      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, Msg.c_str());
-    }
-  }
-});
-
 
 // New connection callback: when a node connects, send it the hub id and initial hop count update
 void newConnectionCallback(uint32_t nodeId) {
@@ -187,7 +180,11 @@ void receivedCallback(uint32_t from, String &msg) {
       Serial.printf("[HUB] Data message received: %s\n", msg.c_str());
       dataQueue.push(msg);
       Serial.printf("[HUB] Data message queued. Queue size: %lu\n", dataQueue.size());
-    }
+  }
+
+  else if (msg.startsWith("DATA_REQUEST:")) {
+      SendDatatoGateway();
+  }
 }
   // Optionally, handle other message types here.
 
@@ -217,9 +214,6 @@ void setup() {
 
   userScheduler.addTask(taskRequestData);
   taskRequestData.enable();
-
-  userScheduler.addTask(SendDatatoGateway);
-  SendDatatoGateway.enable();
 
   broadcastFreshMessage();
 }

@@ -2,10 +2,10 @@ package com.SmartMetering;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
-import java.util.ArrayList;
+
 import java.util.List;
 import java.time.LocalDateTime;
-import com.SmartMetering.DataPayload; // Add this import statement
+import com.SmartMetering.MeshData;
 
 @RestController
 @RequestMapping("/data")
@@ -38,5 +38,7 @@ public class DataController {
         return (List<MeshData>) repository.findAll();
     }
 }
+
+
 
 

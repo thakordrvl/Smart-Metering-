@@ -8,24 +8,27 @@ import java.time.LocalDateTime;
 
 @Entity
 public class MeshData {
-
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String data;
-    
+
     private LocalDateTime timestamp;
 
-    public MeshData() { }
+    public MeshData() {}
 
     public MeshData(String data, LocalDateTime timestamp) {
         this.data = data;
         this.timestamp = timestamp;
     }
 
+    // getters and setters
     public Long getId() {
         return id;
+    }
+    public void setId(Long id) {
+        this.id = id;
     }
     public String getData() {
         return data;

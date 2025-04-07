@@ -1,6 +1,8 @@
 #include "painlessMesh.h"
-#include <WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
-#include <HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
+// #include <WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
+// #include <HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
+#include <ESP8266WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
+#include <ESP8266HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
 #include <queue>
 
 //*************** Mesh Configuration *******************
@@ -36,6 +38,7 @@ std::queue<String> messageQueue;  // Queue for storing incoming messages
 WiFiClient wifiClient;
 
 
+
 Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
   if(myHubId == 0) {
     Serial.println("[GATEWAY] No hub ID set, cannot send broadcast.");
@@ -45,6 +48,9 @@ Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
     String msg = "GATEWAY:" + String(mesh.getNodeId());
     mesh.sendSingle(myHubId,msg);
     Serial.printf("[GATEWAY] Sending to hub (%u): %s\n", myHubId, msg.c_str());
+    String req = "DATA_REQUEST:" + String(mesh.getNodeId());
+    mesh.sendSingle(myHubId,req);
+    Serial.printf("[GATEWAY] Second DATA_REQUEST sent: %s\n", req.c_str());
   }
 });
 
@@ -95,6 +101,7 @@ void switchToUploadPhase() {
   currentState = UPLOAD_PHASE;
 }
 
+
 // Switch from Upload Phase back to Mesh Phase
 void switchToMeshPhase() {
   currentState = MESH_PHASE;
@@ -105,14 +112,13 @@ void switchToMeshPhase() {
   WiFi.mode(WIFI_AP);
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  mesh.setContainsRoot(true);
   mesh.onReceive(&receivedCallback);
+  mesh.setContainsRoot(true);
   userScheduler.addTask(taskGatewayBroadcast);
   taskGatewayBroadcast.enable();
   Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
   stateStartTime = millis();
 }
-
 // Upload one message from the queue via HTTP POST
 void uploadData() {
   if (WiFi.status() == WL_CONNECTED) {

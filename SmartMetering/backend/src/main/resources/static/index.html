@@ -60,88 +60,56 @@
 </div>
 
 <script>
-  // Object to hold the latest data for each device (keyed by device identifier, e.g., "ESP32-5")
-  var devices = {};
+  // Object to hold the latest data for each record (keyed by a unique ID or device identifier)
+  var records = [];
 
   // Function to update the dashboard cards
   function updateCards() {
     var container = document.getElementById("cardContainer");
     container.innerHTML = ""; // Clear current cards
-    for (var device in devices) {
-      var d = devices[device];
+    records.forEach(function(rec) {
       var cardHtml = `
         <div class="card">
-          <h2>${device}</h2>
-          <p>Sensor: ${d.sensorValue}</p>
-          <p>RSSI: ${d.rssi}</p>
-          <p>Free Heap: ${d.freeHeap}</p>
-          <p class="timestamp">Last Update: ${d.timestamp}</p>
+          <h2>${rec.device || 'Unknown Device'}</h2>
+          <p>Data: ${rec.data}</p>
+          <p>Timestamp: ${rec.timestamp}</p>
         </div>
       `;
       container.innerHTML += cardHtml;
-    }
-    console.log("Dashboard updated:", devices);
+    });
+    console.log("Dashboard updated:", records);
   }
 
-  // Function to process incoming data string.
-  // Expected formats:
-  // "From 993203177: Sensor value from ESP32-5 (993203177): 42"
-  // "From 993203177: Health from ESP32-5 | RSSI: -45 | FreeHeap: 210000"
-  function processData(message) {
-    console.log("Processing message:", message);
-    // Remove leading "From <num>:" part
-    var regex = /^From\s+\d+:\s+(.*)$/;
-    var match = message.match(regex);
-    if (!match) {
-      console.log("Message format not recognized:", message);
-      return;
+  // Function to process incoming data from both the initial GET and live WebSocket messages.
+  // This function expects either an object with fields or a plain string.
+  function processData(item) {
+    console.log("Processing item:", item);
+    var rec = {};
+    if (typeof item === "object") {
+      // When fetching from /data, we expect an object with fields "data" and "timestamp"
+      rec.data = item.data;
+      rec.timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString() : new Date().toLocaleString();
+      // Optionally extract device info from the data string if it follows a pattern (e.g., "DATA:ESP32-4:...")
+      var parts = item.data.split(":");
+      rec.device = parts.length > 1 ? parts[1] : "Unknown";
+    } else if (typeof item === "string") {
+      // When receiving live data as a plain string:
+      rec.data = item;
+      rec.timestamp = new Date().toLocaleString();
+      var parts = item.split(":");
+      rec.device = parts.length > 1 ? parts[1] : "Unknown";
     }
-    var infoStr = match[1];
-
-    // Extract device identifier (e.g., "ESP32-5")
-    var deviceRegex = /from\s+(ESP(?:32|8266)-\d+)/i;
-    var deviceMatch = infoStr.match(deviceRegex);
-    if (!deviceMatch) {
-      console.log("Device identifier not found in message:", message);
-      return;
-    }
-    var deviceId = deviceMatch[1];  // e.g., "ESP32-5"
-
-    // Initialize device data if not already present.
-    if (!devices[deviceId]) {
-      devices[deviceId] = { sensorValue: "", rssi: "", freeHeap: "", timestamp: "" };
-    }
-
-    // Update sensor value if available.
-    if (infoStr.indexOf("Sensor value") !== -1) {
-      var parts = infoStr.split(':');
-      if (parts.length >= 2) {
-        devices[deviceId].sensorValue = parts[parts.length - 1].trim();
-      }
-    }
-    // Update health metrics if available.
-    if (infoStr.indexOf("Health from") !== -1) {
-      var segments = infoStr.split('|');
-      if (segments.length >= 3) {
-        devices[deviceId].rssi = segments[1].replace("RSSI:", "").trim();
-        devices[deviceId].freeHeap = segments[2].replace("FreeHeap:", "").trim();
-      }
-    }
-    // Use the current time as the timestamp (for live data)
-    devices[deviceId].timestamp = new Date().toLocaleTimeString();
+    records.push(rec);
     updateCards();
   }
 
   // On page load, fetch initial data from the backend GET endpoint.
-  // This ensures that even after a refresh, data stored in the database is displayed.
   fetch('/data')
     .then(response => response.json())
     .then(dataList => {
         console.log("Initial data loaded:", dataList);
         dataList.forEach(function(item) {
-            // If the data from the backend includes a timestamp, you can use it.
-            // Otherwise, processData() will assign the current time.
-            processData(item.data); // Assuming each item is an object with a 'data' field
+            processData(item);
         });
     })
     .catch(err => console.error("Failed to load initial data:", err));
