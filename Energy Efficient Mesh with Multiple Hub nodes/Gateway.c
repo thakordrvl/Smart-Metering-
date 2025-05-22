@@ -1,8 +1,7 @@
 #include "painlessMesh.h"
-// #include <WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
-// #include <HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
-#include <ESP8266WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
-#include <ESP8266HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
+// For ESP8266 use:
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <queue>
 #include <set>
 
@@ -11,14 +10,14 @@
 #define MESH_PASSWORD   "somethingSneaky"
 #define MESH_PORT       5555
 
-// Hotspot credentials (laptop hotspot)
+// WiFi hotspot credentials (used during upload phase)
 const char* hotspotSSID = "drvl";
 const char* hotspotPassword = "hehehaha";
 
-// Server endpoint (for HTTP POST, adjust if needed)
+// Server URL for uploading data
 const char* SERVER_URL = "http://192.168.137.1:5000/data";
 
-// Define operational states
+// Mesh state machine control
 enum State {
   MESH_PHASE,
   UPLOAD_PHASE
@@ -26,25 +25,27 @@ enum State {
 
 State currentState = MESH_PHASE;
 unsigned long stateStartTime = 0;
-const unsigned long meshPhaseDuration = 60000;   // 60 seconds for mesh phase
-const unsigned long uploadPhaseDuration = 15000; // 15 seconds for upload phase
+const unsigned long meshPhaseDuration = 60000;   // Duration for mesh operation
+const unsigned long uploadPhaseDuration = 15000; // Duration for HTTP upload
 
+// Store all discovered hub IDs
 std::set<uint32_t> hubIds;
-// Global objects
+
+// Global mesh and scheduling objects
 Scheduler userScheduler;
 painlessMesh mesh;
-std::queue<String> messageQueue;  // Queue for storing incoming messages
+std::queue<String> messageQueue;  // Queue to hold data messages received from hubs
 
-// WiFi and HTTP objects for upload phase
-WiFiClient wifiClient;
+WiFiClient wifiClient;  // Used for HTTP communication
 
+// Task 1: Broadcast this gateway's presence so hubs can respond
 Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
   Serial.printf("[GATEWAY] Broadcasting: %s\n", msg.c_str());
 });
 
-
+// Task 2: Request data from all known hubs
 Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
   for (auto hubId : hubIds) {
     String req = "DATA_REQUEST:" + String(mesh.getNodeId());
@@ -53,14 +54,14 @@ Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
   }
 });
 
-
-// Mesh callback: store any received messages in the queue
+// Mesh callback: handle all incoming messages
 void receivedCallback(uint32_t from, String &msg) {
+  // Data from hubs
   if (msg.startsWith("DATA")) {
     Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
     messageQueue.push(msg);
   }
-
+  // Response from hub after gateway broadcast
   else if (msg.startsWith("HUB_ID:")) {
     uint32_t newHubId = msg.substring(7).toInt();
     if (hubIds.find(newHubId) == hubIds.end()) {
@@ -70,24 +71,26 @@ void receivedCallback(uint32_t from, String &msg) {
   }
 }
 
-// Switch from Mesh Phase to Upload Phase
+// Transition to UPLOAD phase: stop mesh and upload queued data via WiFi
 void switchToUploadPhase() {
-  taskGatewayBroadcast.disable();
+  taskBroadcastGatewayId.disable();
+  taskSendDataRequests.disable();
+
   Serial.println("[SWITCH] Transitioning to UPLOAD PHASE");
-  // Stop mesh operations to prevent further message reception
-  mesh.stop();
-  
-  // Switch WiFi mode to STA and connect to the hotspot
+
+  mesh.stop(); // stop all mesh operations during upload
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(hotspotSSID, hotspotPassword);
-  
+
   int retryCount = 0;
-  while(WiFi.status() != WL_CONNECTED && retryCount < 60) {
+  while (WiFi.status() != WL_CONNECTED && retryCount < 60) {
     delay(500);
     Serial.print(".");
     retryCount++;
   }
-  if(WiFi.status() == WL_CONNECTED) {
+
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
     Serial.print("[UPLOAD] Connected to hotspot. IP: ");
     Serial.println(WiFi.localIP());
@@ -95,43 +98,49 @@ void switchToUploadPhase() {
     Serial.println();
     Serial.println("[UPLOAD] Failed to connect to hotspot.");
   }
-  
+
   stateStartTime = millis();
-  uploadData();
+  uploadData();  // Begin uploading all queued data
   currentState = UPLOAD_PHASE;
 }
 
-
-// Switch from Upload Phase back to Mesh Phase
+// Transition back to MESH phase: reconnect to mesh and resume polling
 void switchToMeshPhase() {
   currentState = MESH_PHASE;
   Serial.println("[SWITCH] Transitioning back to MESH PHASE");
-  // Disconnect from hotspot
-  WiFi.disconnect();
-  // Switch WiFi mode to AP (for mesh)
-  WiFi.mode(WIFI_AP);
+
+  WiFi.disconnect(); // leave WiFi STA mode
+
+  WiFi.mode(WIFI_AP); // re-enter mesh mode
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
   mesh.onReceive(&receivedCallback);
+
+  // Resume both gateway broadcast and hub polling tasks
   userScheduler.addTask(taskBroadcastGatewayId);
   userScheduler.addTask(taskSendDataRequests);
   taskBroadcastGatewayId.enable();
   taskSendDataRequests.enable();
+
   Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
+
   stateStartTime = millis();
 }
-// Upload one message from the queue via HTTP POST
+
+// Upload all queued messages via HTTP POST
 void uploadData() {
   if (WiFi.status() == WL_CONNECTED) {
-    while(!messageQueue.empty()) {
+    while (!messageQueue.empty()) {
       String msg = messageQueue.front();
       messageQueue.pop();
+
       String payload = "{\"data\":\"" + msg + "\"}";
       Serial.println("[UPLOAD] Sending payload: " + payload);
-      
+
       HTTPClient http;
       http.begin(wifiClient, SERVER_URL);
       http.addHeader("Content-Type", "application/json");
+
       int httpResponseCode = http.POST(payload);
       if (httpResponseCode > 0) {
         Serial.printf("[UPLOAD] HTTP Response: %d\n", httpResponseCode);
@@ -140,34 +149,33 @@ void uploadData() {
       }
       http.end();
     }
-     
+
     Serial.println("[UPLOAD] Queue is empty now.");
-    switchToMeshPhase();
-    
+    switchToMeshPhase();  // Return to mesh phase after successful upload
   } else {
     Serial.println("[UPLOAD] WiFi not connected.");
   }
 }
 
+// Initialize and enter mesh phase
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Gateway/Upload Cycle");
-  // Start mesh network in AP mode for mesh operation
-  // Start in Mesh Phase.
-  switchToMeshPhase();
+  switchToMeshPhase(); // Start directly in mesh mode
 }
 
+// State machine handler
 void loop() {
   if (currentState == MESH_PHASE) {
     mesh.update();
-    // Remain in Mesh Phase for the designated duration.
+
+    // Check if it's time to switch to upload phase
     if (millis() - stateStartTime > meshPhaseDuration) {
       switchToUploadPhase();
     }
   }
   else if (currentState == UPLOAD_PHASE) {
-    // In Upload Phase, call uploadData() repeatedly
-    // Remain in Upload Phase for the designated duration.
+    // If time's up, return to mesh mode even if upload failed
     if (millis() - stateStartTime > uploadPhaseDuration) {
       switchToMeshPhase();
     }
