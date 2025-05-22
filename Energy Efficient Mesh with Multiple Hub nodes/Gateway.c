@@ -4,6 +4,7 @@
 #include <ESP8266WiFi.h>          // For ESP8266; use <WiFi.h> for ESP32
 #include <ESP8266HTTPClient.h>    // For ESP8266; use <HTTPClient.h> for ESP32
 #include <queue>
+#include <set>
 
 //*************** Mesh Configuration *******************
 #define MESH_PREFIX     "whateverYouLike"
@@ -27,8 +28,8 @@ State currentState = MESH_PHASE;
 unsigned long stateStartTime = 0;
 const unsigned long meshPhaseDuration = 60000;   // 60 seconds for mesh phase
 const unsigned long uploadPhaseDuration = 15000; // 15 seconds for upload phase
-uint32_t myHubId = 0;  // Set this when you receive HUB_ID
 
+std::set<uint32_t> hubIds;
 // Global objects
 Scheduler userScheduler;
 painlessMesh mesh;
@@ -37,35 +38,34 @@ std::queue<String> messageQueue;  // Queue for storing incoming messages
 // WiFi and HTTP objects for upload phase
 WiFiClient wifiClient;
 
+Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
+  String msg = "GATEWAY:" + String(mesh.getNodeId());
+  mesh.sendBroadcast(msg);
+  Serial.printf("[GATEWAY] Broadcasting: %s\n", msg.c_str());
+});
 
 
-Task taskGatewayBroadcast(TASK_SECOND * 20, TASK_FOREVER, []() {
-  if(myHubId == 0) {
-    Serial.println("[GATEWAY] No hub ID set, cannot send broadcast.");
-    return;
-  }
-  else{
-    String msg = "GATEWAY:" + String(mesh.getNodeId());
-    mesh.sendSingle(myHubId,msg);
-    Serial.printf("[GATEWAY] Sending to hub (%u): %s\n", myHubId, msg.c_str());
+Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
+  for (auto hubId : hubIds) {
     String req = "DATA_REQUEST:" + String(mesh.getNodeId());
-    mesh.sendSingle(myHubId,req);
-    Serial.printf("[GATEWAY] Second DATA_REQUEST sent: %s\n", req.c_str());
+    mesh.sendSingle(hubId, req);
+    Serial.printf("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
   }
 });
 
+
 // Mesh callback: store any received messages in the queue
 void receivedCallback(uint32_t from, String &msg) {
-  if (msg.startsWith("DATA")){
-  Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
-  messageQueue.push(msg);
+  if (msg.startsWith("DATA")) {
+    Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
+    messageQueue.push(msg);
   }
 
   else if (msg.startsWith("HUB_ID:")) {
     uint32_t newHubId = msg.substring(7).toInt();
-    if (newHubId != myHubId) {
-      myHubId = newHubId;
-      // Serial.printf("[NODE] Updated Hub ID to %u, broadcasting: %s\n", myHubId, hubMsg.c_str());
+    if (hubIds.find(newHubId) == hubIds.end()) {
+      hubIds.insert(newHubId);
+      Serial.printf("[GATEWAY] New hub ID registered: %u\n", newHubId);
     }
   }
 }
@@ -113,9 +113,10 @@ void switchToMeshPhase() {
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
   mesh.onReceive(&receivedCallback);
-  mesh.setContainsRoot(true);
-  userScheduler.addTask(taskGatewayBroadcast);
-  taskGatewayBroadcast.enable();
+  userScheduler.addTask(taskBroadcastGatewayId);
+  userScheduler.addTask(taskSendDataRequests);
+  taskBroadcastGatewayId.enable();
+  taskSendDataRequests.enable();
   Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
   stateStartTime = millis();
 }

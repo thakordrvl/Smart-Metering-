@@ -25,27 +25,20 @@ std::set<uint32_t> directNeighbors;
 uint32_t gatewayId = 0;
 uint32_t sequenceNumber = 1;  // Global sequence number (1 to 1000)
 
-
-void broadcastFreshMessage() {
-  // Construct a FRESH message. Optionally include the hub's Node ID.
-  String freshMsg = "FRESH:" + String(mesh.getNodeId());
-  // You can use sendBroadcast() if you want to reach all nodes in the mesh.
-  // Or use your sendToAllNeighbors() function if you want to limit it to direct neighbors.
-  mesh.sendBroadcast(freshMsg);
-  Serial.printf("[HUB] Broadcasting FRESH message: %s\n", freshMsg.c_str());
-}
-
-void sendToAllNeighbors(const String &msg) {
+void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
   // Retrieve the list of currently connected nodes (neighbors)
+  
   // Log the outgoing message
   Serial.print("[SEND] Message: ");
   Serial.println(msg);
   
   // Iterate through the neighbor list and send the message to each neighbor individually
   for (uint32_t node : directNeighbors) {
-    Serial.print("[SEND] Sending to node: ");
-    Serial.println(node);
-    mesh.sendSingle(node, msg);
+    if(node!=myHubId && node!= excludeNode) {
+      Serial.print("[SEND] Sending to node: ");
+      Serial.println(node);
+      mesh.sendSingle(node, msg);
+    }
   }
 }
 
@@ -93,18 +86,12 @@ void SendDatatoGateway(){
 }
 
 // Task: Broadcast HUB_ID every 3 minutes (180 seconds)
-Task taskBroadcastHubId(TASK_SECOND * 30, TASK_FOREVER, []() {
-  String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
-  mesh.sendBroadcast(hubMsg);
-  // Serial.println("[BROADCAST] " + hubMsg);
-});
-
-// Task: Broadcast UPDATE_HOP:0 every 3 minutes (180 seconds)
 Task taskBroadcastUpdateHop(TASK_SECOND * 30, TASK_FOREVER, []() {
-  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber);
+  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber) + ":" + String(mesh.getNodeId()); // Append hub ID
   sendToAllNeighbors(updateMsg);
   sequenceNumber = (sequenceNumber % MAX_SEQ) + 1;
 });
+
 
 Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
   Serial.println("[HUB] Initiating data request cycle..."); 
@@ -119,7 +106,7 @@ Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
     uint32_t targetNode = requestQueue.front();
     requestQueue.pop();
     
-    String reqMsg = "REQUEST_SEND";
+    String reqMsg = "REQUEST:" + String(mesh.getNodeId());
     mesh.sendSingle(targetNode, reqMsg);
     Serial.printf("[HUB] Requesting data from node %u (hop count %d)\n",targetNode, nodeHopCounts[targetNode]);
   } 
@@ -156,12 +143,10 @@ void receivedCallback(uint32_t from, String &msg) {
   if (msg.startsWith("UPDATE_HOP_HUB:")) {
     int firstColon = msg.indexOf(':');
     int secondColon = msg.indexOf(':', firstColon + 1);
-    int thirdColon = msg.indexOf(':', secondColon + 1);
 
     if (secondColon != -1 && thirdColon != -1) {
         int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
         uint32_t senderId = strtoul(msg.substring(secondColon + 1, thirdColon).c_str(), NULL, 10);
-
         nodeHopCounts[senderId] = receivedHop;
     }
   }
@@ -169,10 +154,12 @@ void receivedCallback(uint32_t from, String &msg) {
   else if (msg.startsWith("GATEWAY:")) {
     // Use strtoul to avoid overflow issues
     uint32_t id = strtoul(msg.substring(8).c_str(), NULL, 10);
-    if (id != gatewayId) {
-      gatewayId = id;
-      Serial.printf("[HUB] Updated gateway ID to %u\n", gatewayId);
-    }
+
+    gatewayId = id;
+    Serial.printf("[HUB] Updated gateway ID to %u\n", gatewayId);
+    string hubMsg = "HUB_ID:" + String(mesh.getNodeId());
+    mesh.sendSingle(gatewayId, hubMsg);
+    
   }
   // Handle data messages from normal nodes:
   // Expected format: "DATA:<deviceType>-<deviceNumber>:Sensor=<sensorVal>:Hop=<hopCount>"
@@ -184,6 +171,12 @@ void receivedCallback(uint32_t from, String &msg) {
 
   else if (msg.startsWith("DATA_REQUEST:")) {
       SendDatatoGateway();
+  }
+
+  else if (msg.startsWith("LEAVE:")) {
+    uint32_t leavingNode = msg.substring(6).toInt();
+    nodeHopCounts.erase(leavingNode);
+    Serial.printf("[HUB] Node %u has left this hub\n", leavingNode);
   }
 }
   // Optionally, handle other message types here.
@@ -197,7 +190,6 @@ void setup() {
  
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  mesh.setRoot(true);
   Serial.printf("[HUB] My Node ID: %u\n", mesh.getNodeId());
   
   // Set up callbacks
@@ -206,16 +198,11 @@ void setup() {
   mesh.onDroppedConnection(&droppedConnectionCallback);
   
   // Add and enable broadcast tasks (each running every 3 minutes)
-  userScheduler.addTask(taskBroadcastHubId);
-  taskBroadcastHubId.enable();
-  
   userScheduler.addTask(taskBroadcastUpdateHop);
   taskBroadcastUpdateHop.enable();
 
   userScheduler.addTask(taskRequestData);
   taskRequestData.enable();
-
-  broadcastFreshMessage();
 }
 
 void loop() {
