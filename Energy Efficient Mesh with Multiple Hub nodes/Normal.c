@@ -10,13 +10,14 @@ Scheduler userScheduler;
 painlessMesh mesh;
 
 // Device configuration (adjust per node)
-const String deviceType = "ESP32";
-const int deviceNumber = 1;
+const String deviceType = "ESP8266";
+const int deviceNumber = 2;
 
 // State variables
 uint8_t myHopCount = 255;            // Default: unreachable
 uint32_t lastSeqNum = 0;             // Sequence number from hub
 uint32_t myHubId = 0;                // ID of the currently assigned hub
+uint8_t mylocalHubId = 0;  // Unique ID per hub (manually assigned)
 std::set<uint32_t> directNeighbors;  // Connected neighbors
 unsigned long lastUpdateHopTime = 0;
 const unsigned long updateHopTimeout = 60000; // Reset after 60s of silence
@@ -50,15 +51,25 @@ void HopCountUpdated(int receivedHop, uint32_t excludeNode){
   myHopCount = receivedHop + 1;
 
   // Broadcast updated hop and sequence info to neighbors
-  String broadcastMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId);
+  String broadcastMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId) + ":" + String(mylocalHubId);
   sendToAllNeighbors(broadcastMsg, excludeNode);
   Serial.printf("[NODE] Updated hop count to %d, broadcasting: %s\n", myHopCount, broadcastMsg.c_str());
 
   // Inform hub directly as well
   if (myHubId != 0) {
-    String hubUpdateMsg = "UPDATE_HOP_HUB:" + String(myHopCount) + ":" + String(mesh.getNodeId());
-    mesh.sendSingle(myHubId, hubUpdateMsg);
-    Serial.printf("[NODE] Sent hub-specific update: %s\n", hubUpdateMsg.c_str());
+    String hubUpdateMsg = "UPDATE_HOP_HUB:" + String(myHopCount) + ":" + String(mesh.getNodeId()) ;
+    bool sent = mesh.sendSingle(myHubId, hubUpdateMsg);
+    Serial.printf("[NODE] Sent to hub %u? %s\n", myHubId, sent ? "Yes" : "No");
+
+    if(!sent){
+      auto list = mesh.getNodeList(true);
+      Serial.print("Known nodes: ");
+      for (auto n : list) Serial.print(n), Serial.print(" ");
+      Serial.println();
+      if (std::find(list.begin(), list.end(), myHubId) == list.end()) {
+          Serial.println("[ERROR] Hub not found in mesh routing table!");
+      }
+    }
   }
 }
 
@@ -69,7 +80,7 @@ void newConnectionCallback(uint32_t nodeId) {
 
   // Send hop and sequence info if available and not to the hub
   if (myHubId != 0 && lastSeqNum != 0 && nodeId != myHubId) {
-    String updateMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId);
+    String updateMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId) + ":" + String(mylocalHubId);
     mesh.sendSingle(nodeId, updateMsg);
     Serial.printf("[NODE] Sent update message: %s\n", updateMsg.c_str());
   }
@@ -91,22 +102,32 @@ void receivedCallback(uint32_t from, String &msg) {
     int firstColon = msg.indexOf(':');
     int secondColon = msg.indexOf(':', firstColon + 1);
     int thirdColon = msg.indexOf(':', secondColon + 1);
+    int fourthColon = msg.indexOf(':', thirdColon + 1);
 
     int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
     uint32_t receivedSeq = msg.substring(secondColon + 1, thirdColon).toInt();
-    uint32_t incomingHubId = msg.substring(thirdColon + 1).toInt();
+    uint32_t incomingHubId = strtoul(msg.substring(thirdColon + 1, fourthColon).c_str(), NULL, 10);
+    uint8_t incomingLocalHubId = msg.substring(fourthColon + 1).toInt(); 
 
+    if(myHubId == 0) {
+      myHubId = incomingHubId;  // Set initial hub ID
+      mylocalHubId = incomingLocalHubId;  // Set local hub ID
+      lastSeqNum = receivedSeq;
+      lastUpdateHopTime = millis();
+      HopCountUpdated(receivedHop, from);
+      Serial.printf("[NODE] Initial hub set to %u with local ID %u\n", myHubId, mylocalHubId);
+    }
     // 1. If a better hop path is found (shorter path), switch to it
-    if (receivedHop + 1 < myHopCount) {
+    else if (receivedHop + 1 < myHopCount) {
       if (myHubId != 0 && myHubId != incomingHubId) {
         // Inform old hub that this node is leaving
         String leaveMsg = "LEAVE:" + String(mesh.getNodeId());
         mesh.sendSingle(myHubId, leaveMsg);
         Serial.printf("[NODE] Sent LEAVE to old hub %u\n", myHubId);
       }
-      myHopCount = receivedHop + 1;
       myHubId = incomingHubId;
       lastSeqNum = receivedSeq;
+      mylocalHubId = incomingLocalHubId;  // Update local hub ID
       lastUpdateHopTime = millis();
       HopCountUpdated(receivedHop, from);
       Serial.printf("[NODE] Switched to Hub %u with better hop\n", myHubId);
@@ -131,14 +152,15 @@ void receivedCallback(uint32_t from, String &msg) {
 
   // If a hub requests sensor data
   else if (msg.startsWith("REQUEST:")) {
-    uint32_t requestingHubId = msg.substring(8).toInt();  // Extract hub ID
+    uint32_t requestingHubId = strtoul(msg.substring(thirdColon + 1, fourthColon).c_str(), NULL, 10);
 
-    int sensorVal = 18;  // Simulated sensor reading
+    int sensorVal = 18;  // Simulated sensor reading  
     String sensorMsg = "DATA:" + deviceType + "-" + String(deviceNumber) +
         ":Sensor=" + String(sensorVal) +
         ":Hop=" + String(myHopCount) +
         ":Sequence=" + String(lastSeqNum) +
         ":NodeId=" + String(mesh.getNodeId()) +
+        ":LocalHubId=" + String(mylocalHubId) + 
         ":Time=" + String(millis());
 
     mesh.sendSingle(requestingHubId, sensorMsg);

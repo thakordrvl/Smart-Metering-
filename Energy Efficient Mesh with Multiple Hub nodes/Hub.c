@@ -29,6 +29,7 @@ std::set<uint32_t> directNeighbors;  // Immediate mesh neighbors
 
 uint32_t gatewayId = 0;         // Last known gateway
 uint32_t sequenceNumber = 1;    // Hub's own sequence counter
+uint8_t localHubId = 1;  // Unique ID per hub (manually assigned)
 
 // Send a message to all direct neighbors, optionally excluding a node
 void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
@@ -98,7 +99,7 @@ void SendDatatoGateway() {
 
 // Periodically broadcast an UPDATE_HOP message to neighbors
 Task taskBroadcastUpdateHop(TASK_SECOND * 30, TASK_FOREVER, []() {
-  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber) + ":" + String(mesh.getNodeId());
+  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber) + ":" + String(mesh.getNodeId()) + ":" + String(localHubId);
   sendToAllNeighbors(updateMsg, 0);  // Broadcast to all neighbors
   sequenceNumber = (sequenceNumber % MAX_SEQ) + 1;  // Wrap after MAX_SEQ
 });
@@ -130,7 +131,7 @@ void newConnectionCallback(uint32_t nodeId) {
   String initMsg = "HUB_ID:" + String(mesh.getNodeId());
   mesh.sendSingle(nodeId, initMsg);
 
-  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber) + ":" + String(mesh.getNodeId());
+  String updateMsg = "UPDATE_HOP:0:" + String(sequenceNumber) + ":" + String(mesh.getNodeId()) + ":" + String(localHubId);
   mesh.sendSingle(nodeId, updateMsg);
 }
 
@@ -149,13 +150,10 @@ void receivedCallback(uint32_t from, String &msg) {
   if (msg.startsWith("UPDATE_HOP_HUB:")) {
     int firstColon = msg.indexOf(':');
     int secondColon = msg.indexOf(':', firstColon + 1);
-    int thirdColon = msg.indexOf(':', secondColon + 1);
-
-    if (secondColon != -1 && thirdColon != -1) {
-      int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
-      uint32_t senderId = strtoul(msg.substring(secondColon + 1, thirdColon).c_str(), NULL, 10);
-      nodeHopCounts[senderId] = receivedHop;
-    }
+    int thirdColon = msg.indexOf(':', secondColon + 1); 
+    int receivedHop = msg.substring(firstColon + 1, secondColon).toInt();
+    uint32_t senderId = strtoul(msg.substring(secondColon + 1, thirdColon).c_str(), NULL, 10);
+    nodeHopCounts[senderId] = receivedHop;
   }
 
   // Gateway is announcing itself
@@ -163,7 +161,6 @@ void receivedCallback(uint32_t from, String &msg) {
     uint32_t id = strtoul(msg.substring(8).c_str(), NULL, 10);
     gatewayId = id;
     Serial.printf("[HUB] Updated gateway ID to %u\n", gatewayId);
-
     // Send identity back to gateway
     String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
     mesh.sendSingle(gatewayId, hubMsg);
