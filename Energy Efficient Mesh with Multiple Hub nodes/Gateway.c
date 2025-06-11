@@ -63,7 +63,7 @@ void receivedCallback(uint32_t from, String &msg) {
   }
   // Response from hub after gateway broadcast
   else if (msg.startsWith("HUB_ID:")) {
-    uint32_t newHubId = msg.substring(7).toInt();
+    uint32_t newHubId = strtoul(msg.substring(7).c_str(), NULL, 10);
     if (hubIds.find(newHubId) == hubIds.end()) {
       hubIds.insert(newHubId);
       Serial.printf("[GATEWAY] New hub ID registered: %u\n", newHubId);
