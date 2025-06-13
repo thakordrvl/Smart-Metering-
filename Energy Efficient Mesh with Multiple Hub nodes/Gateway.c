@@ -90,6 +90,11 @@ void receivedCallback(uint32_t from, String &msg) {
       Serial.printf("[GATEWAY] New hub ID registered: %u\n", newHubId);
     }
   }
+
+  else if (msg.startsWith("NO_DATA")) {
+    Serial.printf("[GATEWAY] %s (from hub %u)\n", msg.c_str(), from);
+  }
+
 }
 
 // Transition to UPLOAD phase: stop mesh and upload queued data via WiFi

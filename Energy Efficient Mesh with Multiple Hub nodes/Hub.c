@@ -91,6 +91,12 @@ void generateRequestList() {
 void SendDatatoGateway() {
   Serial.println("[HUB] Sending backup data to Gateway...");
 
+  if (dataQueue.empty() && dataQueueBackup.empty()) {
+    Serial.printf("[HUB-%d] No data to send to gateway.\n", localHubId);
+    String msg = "NO_DATA:LocalHubId=" + String(localHubId);
+    sendFromHub(gatewayId, msg);
+    return;
+  }
   // First try sending older backup messages
   while (!dataQueueBackup.empty()) {
     if (gatewayId == 0) {
