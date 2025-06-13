@@ -22,6 +22,28 @@ std::set<uint32_t> directNeighbors;  // Connected neighbors
 unsigned long lastUpdateHopTime = 0;
 const unsigned long updateHopTimeout = 60000; // Reset after 60s of silence
 
+
+bool sendFromNormal(uint32_t targetId, const String& msg) {
+  bool sent = mesh.sendSingle(targetId, msg);
+  Serial.printf("[NODE-%s-%d] Sent to %u? %s | Message: %s\n", deviceType.c_str(), deviceNumber, targetId, sent ? "Yes" : "No", msg.c_str());
+
+  if (!sent) {
+    auto list = mesh.getNodeList(true);
+    Serial.print("Known nodes: ");
+    for (auto n : list) Serial.print(n), Serial.print(" ");
+    Serial.println();
+
+    Serial.printf("[NODE-%s-%d] [MESSAGE FAILED] %s\n", deviceType.c_str(), deviceNumber, msg.c_str());
+    if (std::find(list.begin(), list.end(), targetId) == list.end()) {
+      Serial.printf("[NODE-%s-%d] [ERROR] Target %u not found in routing table!\n", deviceType.c_str(), deviceNumber, targetId);
+    } else {
+      Serial.printf("[NODE-%s-%d] [WARN] Target %u is known but message failed to send.\n", deviceType.c_str(), deviceNumber, targetId);
+    }
+  }
+
+  return sent;
+}
+
 // Send a message to all direct neighbors except excluded nodes (e.g. hub)
 void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
   Serial.print("[SEND] Message: ");
@@ -31,7 +53,7 @@ void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
     if (node != myHubId && node != excludeNode) {
       Serial.print("[SEND] Sending to node: ");
       Serial.println(node);
-      mesh.sendSingle(node, msg);
+      sendFromNormal(node, msg);
     }
   }
 }
@@ -58,18 +80,7 @@ void HopCountUpdated(int receivedHop, uint32_t excludeNode){
   // Inform hub directly as well
   if (myHubId != 0) {
     String hubUpdateMsg = "UPDATE_HOP_HUB:" + String(myHopCount) + ":" + String(mesh.getNodeId()) ;
-    bool sent = mesh.sendSingle(myHubId, hubUpdateMsg);
-    Serial.printf("[NODE] Sent to hub %u? %s\n", myHubId, sent ? "Yes" : "No");
-
-    if(!sent){
-      auto list = mesh.getNodeList(true);
-      Serial.print("Known nodes: ");
-      for (auto n : list) Serial.print(n), Serial.print(" ");
-      Serial.println();
-      if (std::find(list.begin(), list.end(), myHubId) == list.end()) {
-          Serial.println("[ERROR] Hub not found in mesh routing table!");
-      }
-    }
+    sendFromNormal(myHubId, hubUpdateMsg);
   }
 }
 
@@ -81,8 +92,7 @@ void newConnectionCallback(uint32_t nodeId) {
   // Send hop and sequence info if available and not to the hub
   if (myHubId != 0 && lastSeqNum != 0 && nodeId != myHubId) {
     String updateMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId) + ":" + String(mylocalHubId);
-    mesh.sendSingle(nodeId, updateMsg);
-    Serial.printf("[NODE] Sent update message: %s\n", updateMsg.c_str());
+    sendFromNormal(nodeId, updateMsg);
   }
 }
 
@@ -122,7 +132,7 @@ void receivedCallback(uint32_t from, String &msg) {
       if (myHubId != 0 && myHubId != incomingHubId) {
         // Inform old hub that this node is leaving
         String leaveMsg = "LEAVE:" + String(mesh.getNodeId());
-        mesh.sendSingle(myHubId, leaveMsg);
+        sendFromNormal(myHubId, leaveMsg);
         Serial.printf("[NODE] Sent LEAVE to old hub %u\n", myHubId);
       }
       myHubId = incomingHubId;
@@ -152,20 +162,30 @@ void receivedCallback(uint32_t from, String &msg) {
 
   // If a hub requests sensor data
   else if (msg.startsWith("REQUEST:")) {
-    uint32_t requestingHubId = strtoul(msg.substring(thirdColon + 1, fourthColon).c_str(), NULL, 10);
+    msg.trim();  // Ensure no newline messes with parsing
+    uint32_t requestingHubId = strtoul(msg.substring(8).c_str(), NULL, 10);
 
-    int sensorVal = 18;  // Simulated sensor reading  
-    String sensorMsg = "DATA:" + deviceType + "-" + String(deviceNumber) +
-        ":Sensor=" + String(sensorVal) +
-        ":Hop=" + String(myHopCount) +
-        ":Sequence=" + String(lastSeqNum) +
-        ":NodeId=" + String(mesh.getNodeId()) +
-        ":LocalHubId=" + String(mylocalHubId) + 
-        ":Time=" + String(millis());
+    if (requestingHubId != myHubId) {
+      Serial.printf("[NODE] WARNING: REQUEST from non-assigned hub %u (current myHubId = %u)\n", requestingHubId, myHubId);
+    }
 
-    mesh.sendSingle(requestingHubId, sensorMsg);
-    Serial.printf("[NODE] Sent sensor data to requesting hub %u\n", requestingHubId);
+    if (myHubId == 0) {
+      Serial.println("[NODE] ERROR: No assigned hub to send sensor data to.");
+    }
+    else{
+      int sensorVal = 18;  // Simulated sensor reading  
+      String sensorMsg = "DATA:" + deviceType + "-" + String(deviceNumber) +
+      ":Sensor=" + String(sensorVal) +
+      ":Hop=" + String(myHopCount) +
+      ":Sequence=" + String(lastSeqNum) +
+      ":NodeId=" + String(mesh.getNodeId()) +
+      ":LocalHubId=" + String(mylocalHubId) + 
+      ":Time=" + String(millis());
+      sendFromNormal(myHubId, sensorMsg);
+      Serial.printf("[NODE] Sent sensor data to myHubId %u\n", myHubId);
+    }
   }
+
 }
 
 void setup() {

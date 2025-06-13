@@ -38,6 +38,27 @@ std::queue<String> messageQueue;  // Queue to hold data messages received from h
 
 WiFiClient wifiClient;  // Used for HTTP communication
 
+bool sendFromGateway(uint32_t targetId, const String& msg) {
+  bool sent = mesh.sendSingle(targetId, msg);
+  Serial.printf("[GATEWAY] Sent to %u? %s | Message: %s\n", targetId, sent ? "Yes" : "No", msg.c_str());
+
+  if (!sent) {
+    auto list = mesh.getNodeList(true);
+    Serial.print("Known nodes: ");
+    for (auto n : list) Serial.print(n), Serial.print(" ");
+    Serial.println();
+
+    Serial.printf("[GATEWAY] [MESSAGE FAILED] %s\n", msg.c_str());
+    if (std::find(list.begin(), list.end(), targetId) == list.end()) {
+      Serial.printf("[GATEWAY] [ERROR] Target %u not found in routing table!\n", targetId);
+    } else {
+      Serial.printf("[GATEWAY] [WARN] Target %u is known but message failed to send.\n", targetId);
+    }
+  }
+
+  return sent;
+}
+
 // Task 1: Broadcast this gateway's presence so hubs can respond
 Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
@@ -49,7 +70,7 @@ Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
 Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
   for (auto hubId : hubIds) {
     String req = "DATA_REQUEST:" + String(mesh.getNodeId());
-    mesh.sendSingle(hubId, req);
+    sendFromGateway(hubId, req);
     Serial.printf("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
   }
 });
