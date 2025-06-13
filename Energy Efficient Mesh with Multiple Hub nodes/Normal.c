@@ -25,7 +25,7 @@ const unsigned long updateHopTimeout = 60000; // Reset after 60s of silence
 
 bool sendFromNormal(uint32_t targetId, const String& msg) {
   bool sent = mesh.sendSingle(targetId, msg);
-  Serial.printf("[NODE-%s-%d] Sent to %u? %s | Message: %s\n", deviceType.c_str(), deviceNumber, targetId, sent ? "Yes" : "No", msg.c_str());
+  Serial.println("[NODE-%s-%d] Sent to %u? %s | Message: %s\n", deviceType.c_str(), deviceNumber, targetId, sent ? "Yes" : "No", msg.c_str());
 
   if (!sent) {
     auto list = mesh.getNodeList(true);
@@ -33,11 +33,11 @@ bool sendFromNormal(uint32_t targetId, const String& msg) {
     for (auto n : list) Serial.print(n), Serial.print(" ");
     Serial.println();
 
-    Serial.printf("[NODE-%s-%d] [MESSAGE FAILED] %s\n", deviceType.c_str(), deviceNumber, msg.c_str());
+    Serial.println("[NODE-%s-%d] [MESSAGE FAILED] %s\n", deviceType.c_str(), deviceNumber, msg.c_str());
     if (std::find(list.begin(), list.end(), targetId) == list.end()) {
-      Serial.printf("[NODE-%s-%d] [ERROR] Target %u not found in routing table!\n", deviceType.c_str(), deviceNumber, targetId);
+      Serial.println("[NODE-%s-%d] [ERROR] Target %u not found in routing table!\n", deviceType.c_str(), deviceNumber, targetId);
     } else {
-      Serial.printf("[NODE-%s-%d] [WARN] Target %u is known but message failed to send.\n", deviceType.c_str(), deviceNumber, targetId);
+      Serial.println("[NODE-%s-%d] [WARN] Target %u is known but message failed to send.\n", deviceType.c_str(), deviceNumber, targetId);
     }
   }
 
@@ -46,13 +46,11 @@ bool sendFromNormal(uint32_t targetId, const String& msg) {
 
 // Send a message to all direct neighbors except excluded nodes (e.g. hub)
 void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
-  Serial.print("[SEND] Message: ");
-  Serial.println(msg);
+  Serial.println("[NODE-%s-%d] [SEND] Message: %s\n", deviceType.c_str(), deviceNumber, msg.c_str());
 
   for (uint32_t node : directNeighbors) {
     if (node != myHubId && node != excludeNode) {
-      Serial.print("[SEND] Sending to node: ");
-      Serial.println(node);
+      Serial.println("[NODE-%s-%d] [SEND] Sending to node: %u\n", deviceType.c_str(), deviceNumber, node);
       sendFromNormal(node, msg);
     }
   }
@@ -75,7 +73,7 @@ void HopCountUpdated(int receivedHop, uint32_t excludeNode){
   // Broadcast updated hop and sequence info to neighbors
   String broadcastMsg = "UPDATE_HOP:" + String(myHopCount) + ":" + String(lastSeqNum) + ":" + String(myHubId) + ":" + String(mylocalHubId);
   sendToAllNeighbors(broadcastMsg, excludeNode);
-  Serial.printf("[NODE] Updated hop count to %d, broadcasting: %s\n", myHopCount, broadcastMsg.c_str());
+  Serial.println("[NODE-%s-%d] Updated hop count to %d, broadcasting: %s\n", deviceType.c_str(), deviceNumber, myHopCount, broadcastMsg.c_str());
 
   // Inform hub directly as well
   if (myHubId != 0) {
@@ -87,7 +85,7 @@ void HopCountUpdated(int receivedHop, uint32_t excludeNode){
 // Called when a new neighbor connects
 void newConnectionCallback(uint32_t nodeId) {
   directNeighbors.insert(nodeId);
-  Serial.printf("[NODE] New connection from node %u\n", nodeId);
+  Serial.println("[NODE-%s-%d] New connection from node %u\n", deviceType.c_str(), deviceNumber, nodeId);
 
   // Send hop and sequence info if available and not to the hub
   if (myHubId != 0 && lastSeqNum != 0 && nodeId != myHubId) {
@@ -98,14 +96,14 @@ void newConnectionCallback(uint32_t nodeId) {
 
 // Called when a neighbor disconnects
 void droppedConnectionCallback(uint32_t nodeId) {
-  Serial.printf("[NODE] Connection dropped from node %u\n", nodeId);
+  Serial.println("[NODE-%s-%d] Connection dropped from node %u\n", deviceType.c_str(), deviceNumber, nodeId);
   directNeighbors.erase(nodeId);
 }
 
 // Handles all received messages
 void receivedCallback(uint32_t from, String &msg) {
-  Serial.printf("[NODE] Received from %u: %s\n", from, msg.c_str());
-  Serial.printf("[NODE] My Node ID: %u\n", mesh.getNodeId());
+  Serial.println("[NODE-%s-%d] Received from %u: %s\n", deviceType.c_str(), deviceNumber, from, msg.c_str());
+  Serial.println("[NODE-%s-%d] My Node ID: %u\n", deviceType.c_str(), deviceNumber, mesh.getNodeId());
 
   // Process hop/seq update messages
   if (msg.startsWith("UPDATE_HOP:")) {
@@ -125,7 +123,7 @@ void receivedCallback(uint32_t from, String &msg) {
       lastSeqNum = receivedSeq;
       lastUpdateHopTime = millis();
       HopCountUpdated(receivedHop, from);
-      Serial.printf("[NODE] Initial hub set to %u with local ID %u\n", myHubId, mylocalHubId);
+      Serial.println("[NODE-%s-%d] Initial hub set to %u with local ID %u\n", deviceType.c_str(), deviceNumber, myHubId, mylocalHubId);
     }
     // 1. If a better hop path is found (shorter path), switch to it
     else if (receivedHop + 1 < myHopCount) {
@@ -133,14 +131,14 @@ void receivedCallback(uint32_t from, String &msg) {
         // Inform old hub that this node is leaving
         String leaveMsg = "LEAVE:" + String(mesh.getNodeId());
         sendFromNormal(myHubId, leaveMsg);
-        Serial.printf("[NODE] Sent LEAVE to old hub %u\n", myHubId);
+        Serial.println("[NODE-%s-%d] Sent LEAVE to old hub %u\n", deviceType.c_str(), deviceNumber, myHubId);
       }
       myHubId = incomingHubId;
       lastSeqNum = receivedSeq;
       mylocalHubId = incomingLocalHubId;  // Update local hub ID
       lastUpdateHopTime = millis();
       HopCountUpdated(receivedHop, from);
-      Serial.printf("[NODE] Switched to Hub %u with better hop\n", myHubId);
+      Serial.println("[NODE-%s-%d] Switched to Hub %u with better hop\n", deviceType.c_str(), deviceNumber, myHubId);
     }
 
     // 2. If message is from current hub, and has newer sequence
@@ -149,13 +147,13 @@ void receivedCallback(uint32_t from, String &msg) {
         lastSeqNum = receivedSeq;
         lastUpdateHopTime = millis();
         HopCountUpdated(receivedHop, from);
-        Serial.printf("[NODE] Seq update from same Hub %u: Seq %u\n", myHubId, lastSeqNum);
+        Serial.println("[NODE-%s-%d] Seq update from same Hub %u: Seq %u\n", deviceType.c_str(), deviceNumber, myHubId, lastSeqNum);
       }
     }
 
     // 3. If worse hop and different hub → ignore it
     else if (incomingHubId != myHubId) {
-      Serial.printf("[NODE] Ignoring message from different hub %u\n", incomingHubId);
+      Serial.println("[NODE-%s-%d] Ignoring message from different hub %u\n", deviceType.c_str(), deviceNumber, incomingHubId);
       return;
     }
   }
@@ -166,11 +164,11 @@ void receivedCallback(uint32_t from, String &msg) {
     uint32_t requestingHubId = strtoul(msg.substring(8).c_str(), NULL, 10);
 
     if (requestingHubId != myHubId) {
-      Serial.printf("[NODE] WARNING: REQUEST from non-assigned hub %u (current myHubId = %u)\n", requestingHubId, myHubId);
+      Serial.println("[NODE-%s-%d] WARNING: REQUEST from non-assigned hub %u (current myHubId = %u)\n", deviceType.c_str(), deviceNumber, requestingHubId, myHubId);
     }
 
     if (myHubId == 0) {
-      Serial.println("[NODE] ERROR: No assigned hub to send sensor data to.");
+      Serial.println("[NODE-%s-%d] ERROR: No assigned hub to send sensor data to.\n", deviceType.c_str(), deviceNumber);
     }
     else{
       int sensorVal = 18;  // Simulated sensor reading  
@@ -182,7 +180,7 @@ void receivedCallback(uint32_t from, String &msg) {
       ":LocalHubId=" + String(mylocalHubId) + 
       ":Time=" + String(millis());
       sendFromNormal(myHubId, sensorMsg);
-      Serial.printf("[NODE] Sent sensor data to myHubId %u\n", myHubId);
+      Serial.println("[NODE-%s-%d] Sent sensor data to myHubId %u\n", deviceType.c_str(), deviceNumber, myHubId);
     }
   }
 
@@ -202,7 +200,7 @@ void loop() {
 
   // If no UPDATE_HOP received within timeout, reset state
   if (millis() - lastUpdateHopTime > updateHopTimeout) {
-    Serial.println("[NODE] No UPDATE_HOP received in 60 seconds. Resetting hop count and sequence.");
+    Serial.println("[NODE-%s-%d] No UPDATE_HOP received in 60 seconds. Resetting hop count and sequence.\n", deviceType.c_str(), deviceNumber);
     myHubId = 0;
     myHopCount = 255;
     lastSeqNum = 0;

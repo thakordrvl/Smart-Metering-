@@ -35,24 +35,23 @@ std::set<uint32_t> hubIds;
 Scheduler userScheduler;
 painlessMesh mesh;
 std::queue<String> messageQueue;  // Queue to hold data messages received from hubs
-
 WiFiClient wifiClient;  // Used for HTTP communication
 
 bool sendFromGateway(uint32_t targetId, const String& msg) {
   bool sent = mesh.sendSingle(targetId, msg);
-  Serial.printf("[GATEWAY] Sent to %u? %s | Message: %s\n", targetId, sent ? "Yes" : "No", msg.c_str());
+  Serial.println("[GATEWAY] Sent to %u? %s | Message: %s\n", targetId, sent ? "Yes" : "No", msg.c_str());
 
   if (!sent) {
     auto list = mesh.getNodeList(true);
-    Serial.print("Known nodes: ");
+    Serial.println("Known nodes: ");
     for (auto n : list) Serial.print(n), Serial.print(" ");
     Serial.println();
 
-    Serial.printf("[GATEWAY] [MESSAGE FAILED] %s\n", msg.c_str());
+    Serial.println("[GATEWAY] [MESSAGE FAILED] %s\n", msg.c_str());
     if (std::find(list.begin(), list.end(), targetId) == list.end()) {
-      Serial.printf("[GATEWAY] [ERROR] Target %u not found in routing table!\n", targetId);
+      Serial.println("[GATEWAY] [ERROR] Target %u not found in routing table!\n", targetId);
     } else {
-      Serial.printf("[GATEWAY] [WARN] Target %u is known but message failed to send.\n", targetId);
+      Serial.println("[GATEWAY] [WARN] Target %u is known but message failed to send.\n", targetId);
     }
   }
 
@@ -63,7 +62,7 @@ bool sendFromGateway(uint32_t targetId, const String& msg) {
 Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
-  Serial.printf("[GATEWAY] Broadcasting: %s\n", msg.c_str());
+  Serial.println("[GATEWAY] Broadcasting: %s\n", msg.c_str());
 });
 
 // Task 2: Request data from all known hubs
@@ -71,7 +70,7 @@ Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
   for (auto hubId : hubIds) {
     String req = "DATA_REQUEST:" + String(mesh.getNodeId());
     sendFromGateway(hubId, req);
-    Serial.printf("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
+    Serial.println("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
   }
 });
 
@@ -79,7 +78,7 @@ Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
 void receivedCallback(uint32_t from, String &msg) {
   // Data from hubs
   if (msg.startsWith("DATA")) {
-    Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
+    Serial.println("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
     messageQueue.push(msg);
   }
   // Response from hub after gateway broadcast
@@ -87,12 +86,12 @@ void receivedCallback(uint32_t from, String &msg) {
     uint32_t newHubId = strtoul(msg.substring(7).c_str(), NULL, 10);
     if (hubIds.find(newHubId) == hubIds.end()) {
       hubIds.insert(newHubId);
-      Serial.printf("[GATEWAY] New hub ID registered: %u\n", newHubId);
+      Serial.println("[GATEWAY] New hub ID registered: %u\n", newHubId);
     }
   }
 
   else if (msg.startsWith("NO_DATA")) {
-    Serial.printf("[GATEWAY] %s (from hub %u)\n", msg.c_str(), from);
+    Serial.println("[GATEWAY] %s (from hub %u)\n", msg.c_str(), from);
   }
 
 }
@@ -148,7 +147,7 @@ void switchToMeshPhase() {
   taskBroadcastGatewayId.enable();
   taskSendDataRequests.enable();
 
-  Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
+  Serial.println("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
 
   stateStartTime = millis();
 }
@@ -169,9 +168,9 @@ void uploadData() {
 
       int httpResponseCode = http.POST(payload);
       if (httpResponseCode > 0) {
-        Serial.printf("[UPLOAD] HTTP Response: %d\n", httpResponseCode);
+        Serial.println("[UPLOAD] HTTP Response: %d\n", httpResponseCode);
       } else {
-        Serial.printf("[UPLOAD] HTTP POST failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
+        Serial.println("[UPLOAD] HTTP POST failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
       }
       http.end();
     }
@@ -182,7 +181,6 @@ void uploadData() {
     Serial.println("[UPLOAD] WiFi not connected.");
   }
 }
-
 // Initialize and enter mesh phase
 void setup() {
   Serial.begin(115200);

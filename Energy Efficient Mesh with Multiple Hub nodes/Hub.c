@@ -33,7 +33,7 @@ uint8_t localHubId = 1;  // Unique ID per hub (manually assigned)
 
 bool sendFromHub(uint32_t targetId, const String& msg) {
   bool sent = mesh.sendSingle(targetId, msg);
-  Serial.printf("[HUB-%d] Sent to %u? %s | Message: %s\n", localHubId, targetId, sent ? "Yes" : "No", msg.c_str());
+  Serial.println("[HUB-%d] Sent to %u? %s | Message: %s\n", localHubId, targetId, sent ? "Yes" : "No", msg.c_str());
 
   if (!sent) {
     auto list = mesh.getNodeList(true);
@@ -41,27 +41,24 @@ bool sendFromHub(uint32_t targetId, const String& msg) {
     for (auto n : list) Serial.print(n), Serial.print(" ");
     Serial.println();
 
-    Serial.printf("[HUB-%d] [MESSAGE FAILED] %s\n", localHubId, msg.c_str());
+    Serial.println("[HUB-%d] [MESSAGE FAILED] %s\n", localHubId, msg.c_str());
     if (std::find(list.begin(), list.end(), targetId) == list.end()) {
-      Serial.printf("[HUB-%d] [ERROR] Target %u not found in routing table!\n", localHubId, targetId);
+      Serial.println("[HUB-%d] [ERROR] Target %u not found in routing table!\n", localHubId, targetId);
     } else {
-      Serial.printf("[HUB-%d] [WARN] Target %u is known but message failed to send.\n", localHubId, targetId);
+      Serial.println("[HUB-%d] [WARN] Target %u is known but message failed to send.\n", localHubId, targetId);
     }
   }
 
   return sent;
 }
 
-
 // Send a message to all direct neighbors, optionally excluding a node
 void sendToAllNeighbors(String &msg, uint32_t excludeNode) {
-  Serial.print("[SEND] Message: ");
-  Serial.println(msg);
+  Serial.println("[HUB-%d] Broadcasting message: %s\n", localHubId, msg.c_str());
   
   for (uint32_t node : directNeighbors) {
     if (node != excludeNode) {
-      Serial.print("[SEND] Sending to node: ");
-      Serial.println(node);
+      Serial.println("[HUB-%d] Sending to node: %u\n", localHubId, node);
       sendFromHub(node, msg);
     }
   }
@@ -84,15 +81,15 @@ void generateRequestList() {
     requestQueue.push(p.first);
   }
 
-  Serial.printf("[HUB] Rebuilt request queue with %lu nodes\n", requestQueue.size());
+  Serial.println("[HUB-%d] Rebuilt request queue with %lu nodes\n", localHubId, requestQueue.size());
 }
 
 // Send buffered data to gateway (backup and live queues)
 void SendDatatoGateway() {
-  Serial.println("[HUB] Sending backup data to Gateway...");
+  Serial.println("[HUB-%d] Sending backup data to Gateway...\n", localHubId);
 
   if (dataQueue.empty() && dataQueueBackup.empty()) {
-    Serial.printf("[HUB-%d] No data to send to gateway.\n", localHubId);
+    Serial.println("[HUB-%d] No data to send to gateway.\n", localHubId);
     String msg = "NO_DATA:LocalHubId=" + String(localHubId);
     sendFromHub(gatewayId, msg);
     return;
@@ -100,27 +97,27 @@ void SendDatatoGateway() {
   // First try sending older backup messages
   while (!dataQueueBackup.empty()) {
     if (gatewayId == 0) {
-      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      Serial.println("[HUB-%d] No gateway ID set, cannot send data.\n", localHubId);
       break;
     } else {
       String backupMsg = dataQueueBackup.front();
       dataQueueBackup.pop();
       sendFromHub(gatewayId, backupMsg);
-      Serial.printf("[HUB] (Backup) Sent to gateway (%u): %s\n", gatewayId, backupMsg.c_str());
+      Serial.println("[HUB-%d] (Backup) Sent to gateway (%u): %s\n", localHubId, gatewayId, backupMsg.c_str());
     }
   }
 
   // Then send new data, also backing it up in case it fails
   while (!dataQueue.empty()) {
     if (gatewayId == 0) {
-      Serial.println("[HUB] No gateway ID set, cannot send data.");
+      Serial.println("[HUB-%d] No gateway ID set, cannot send data.\n", localHubId);
       break;
     } else {
       String Msg = dataQueue.front();
       dataQueue.pop();
       dataQueueBackup.push(Msg);
       sendFromHub(gatewayId, Msg);
-      Serial.printf("[HUB] Sent to gateway (%u): %s\n", gatewayId, Msg.c_str());
+      Serial.println("[HUB-%d] Sent to gateway (%u): %s\n", localHubId, gatewayId, Msg.c_str());
     }
   }
 }
@@ -134,7 +131,7 @@ Task taskBroadcastUpdateHop(TASK_SECOND * 30, TASK_FOREVER, []() {
 
 // Request data from normal nodes in round-robin fashion
 Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
-  Serial.println("[HUB] Initiating data request cycle..."); 
+  Serial.println("[HUB-%d] Initiating data request cycle...\n", localHubId);
 
   if (requestQueue.empty()) {
     generateRequestList();
@@ -146,13 +143,13 @@ Task taskRequestData(TASK_SECOND * 60, TASK_FOREVER, []() {
 
     String reqMsg = "REQUEST:" + String(mesh.getNodeId());  // Identify self in request
     sendFromHub(targetNode, reqMsg);
-    Serial.printf("[HUB] Requesting data from node %u (hop count %d)\n", targetNode, nodeHopCounts[targetNode]);
+    Serial.println("[HUB-%d] Requesting data from node %u (hop count %d)\n", localHubId, targetNode, nodeHopCounts[targetNode]);
   }
 });
 
 // Called when a new neighbor connects
 void newConnectionCallback(uint32_t nodeId) {
-  Serial.printf("[HUB] New connection: node %u\n", nodeId);
+  Serial.println("[HUB-%d] New connection: node %u\n", localHubId, nodeId);
   directNeighbors.insert(nodeId);  // Track neighbor
 
   // Send identity and sequence
@@ -172,7 +169,7 @@ void droppedConnectionCallback(uint32_t nodeId) {
 
 // Main message handler
 void receivedCallback(uint32_t from, String &msg) {
-  Serial.printf("[HUB] Received from %u: %s\n", from, msg.c_str());
+  Serial.println("[HUB-%d] Received from %u: %s\n", localHubId, from, msg.c_str());
 
   // Normal node is reporting its hop count
   if (msg.startsWith("UPDATE_HOP_HUB:")) {
@@ -188,7 +185,7 @@ void receivedCallback(uint32_t from, String &msg) {
   else if (msg.startsWith("GATEWAY:")) {
     uint32_t id = strtoul(msg.substring(8).c_str(), NULL, 10);
     gatewayId = id;
-    Serial.printf("[HUB] Updated gateway ID to %u\n", gatewayId);
+   Serial.println("[HUB-%d] Updated gateway ID to %u\n", localHubId, gatewayId);
     // Send identity back to gateway
     String hubMsg = "HUB_ID:" + String(mesh.getNodeId());
     sendFromHub(gatewayId, hubMsg);
@@ -196,14 +193,14 @@ void receivedCallback(uint32_t from, String &msg) {
 
   // Received sensor data from normal node
   else if (msg.startsWith("DATA:")) {
-    Serial.printf("[HUB] Data message received: %s\n", msg.c_str());
+    Serial.println("[HUB-%d] Data message received: %s\n", localHubId, msg.c_str());
     dataQueue.push(msg);
-    Serial.printf("[HUB] Data message queued. Queue size: %lu\n", dataQueue.size());
+    Serial.println("[HUB-%d] Data message queued. Queue size: %lu\n", localHubId, dataQueue.size());
   }
 
   // Gateway is requesting data dump
   else if (msg.startsWith("DATA_REQUEST:")) {
-    Serial.printf("[HUB] Data request received from gateway %u\n", from);
+    Serial.println("[HUB-%d] Data request received from gateway %u\n", localHubId, from);
     SendDatatoGateway();
   }
 
@@ -211,7 +208,7 @@ void receivedCallback(uint32_t from, String &msg) {
   else if (msg.startsWith("LEAVE:")) {
     uint32_t leavingNode = msg.substring(6).toInt();
     nodeHopCounts.erase(leavingNode);
-    Serial.printf("[HUB] Node %u has left this hub\n", leavingNode);
+    Serial.println("[HUB-%d] Node %u has left this hub\n", localHubId, leavingNode);
   }
 }
 
@@ -221,7 +218,7 @@ void setup() {
 
   mesh.setDebugMsgTypes(ERROR | STARTUP);
   mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  Serial.printf("[HUB] My Node ID: %u\n", mesh.getNodeId());
+  Serial.println("[HUB-%d] My Node ID: %u\n", localHubId, mesh.getNodeId());
 
   mesh.onReceive(&receivedCallback);
   mesh.onNewConnection(&newConnectionCallback);
