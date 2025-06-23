@@ -1,3 +1,7 @@
+/*Code Written and Created by Dhruvil Thakor. 
+If you want to use this code, I would suggest you to go through the commit history and documentation of PainlessMesh
+You are welcome.*/
+
 #include "painlessMesh.h"
 // For ESP8266 use:
 #include <ESP8266WiFi.h>
