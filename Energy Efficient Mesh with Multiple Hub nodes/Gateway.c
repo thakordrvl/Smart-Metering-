@@ -39,7 +39,7 @@ WiFiClient wifiClient;  // Used for HTTP communication
 
 bool sendFromGateway(uint32_t targetId, const String& msg) {
   bool sent = mesh.sendSingle(targetId, msg);
-  Serial.println("[GATEWAY] Sent to %u? %s | Message: %s\n", targetId, sent ? "Yes" : "No", msg.c_str());
+  Serial.printf("[GATEWAY] Sent to %u? %s | Message: %s\n", targetId, sent ? "Yes" : "No", msg.c_str());
 
   if (!sent) {
     auto list = mesh.getNodeList(true);
@@ -47,11 +47,11 @@ bool sendFromGateway(uint32_t targetId, const String& msg) {
     for (auto n : list) Serial.print(n), Serial.print(" ");
     Serial.println();
 
-    Serial.println("[GATEWAY] [MESSAGE FAILED] %s\n", msg.c_str());
+    Serial.printf("[GATEWAY] [MESSAGE FAILED] %s\n", msg.c_str());
     if (std::find(list.begin(), list.end(), targetId) == list.end()) {
-      Serial.println("[GATEWAY] [ERROR] Target %u not found in routing table!\n", targetId);
+      Serial.printf("[GATEWAY] [ERROR] Target %u not found in routing table!\n", targetId);
     } else {
-      Serial.println("[GATEWAY] [WARN] Target %u is known but message failed to send.\n", targetId);
+      Serial.printf("[GATEWAY] [WARN] Target %u is known but message failed to send.\n", targetId);
     }
   }
 
@@ -62,7 +62,7 @@ bool sendFromGateway(uint32_t targetId, const String& msg) {
 Task taskBroadcastGatewayId(TASK_SECOND * 30, TASK_FOREVER, []() {
   String msg = "GATEWAY:" + String(mesh.getNodeId());
   mesh.sendBroadcast(msg);
-  Serial.println("[GATEWAY] Broadcasting: %s\n", msg.c_str());
+  Serial.printf("[GATEWAY] Broadcasting: %s\n", msg.c_str());
 });
 
 // Task 2: Request data from all known hubs
@@ -70,7 +70,7 @@ Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
   for (auto hubId : hubIds) {
     String req = "DATA_REQUEST:" + String(mesh.getNodeId());
     sendFromGateway(hubId, req);
-    Serial.println("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
+    Serial.printf("[GATEWAY] Sent DATA_REQUEST to hub %u: %s\n", hubId, req.c_str());
   }
 });
 
@@ -78,7 +78,7 @@ Task taskSendDataRequests(TASK_SECOND * 45, TASK_FOREVER, []() {
 void receivedCallback(uint32_t from, String &msg) {
   // Data from hubs
   if (msg.startsWith("DATA")) {
-    Serial.println("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
+    Serial.printf("[GATEWAY] Received from %u: %s\n", from, msg.c_str());
     messageQueue.push(msg);
   }
   // Response from hub after gateway broadcast
@@ -86,12 +86,12 @@ void receivedCallback(uint32_t from, String &msg) {
     uint32_t newHubId = strtoul(msg.substring(7).c_str(), NULL, 10);
     if (hubIds.find(newHubId) == hubIds.end()) {
       hubIds.insert(newHubId);
-      Serial.println("[GATEWAY] New hub ID registered: %u\n", newHubId);
+      Serial.printf("[GATEWAY] New hub ID registered: %u\n", newHubId);
     }
   }
 
   else if (msg.startsWith("NO_DATA")) {
-    Serial.println("[GATEWAY] %s (from hub %u)\n", msg.c_str(), from);
+    Serial.printf("[GATEWAY] %s (from hub %u)\n", msg.c_str(), from);
   }
 
 }
@@ -101,7 +101,7 @@ void switchToUploadPhase() {
   taskBroadcastGatewayId.disable();
   taskSendDataRequests.disable();
 
-  Serial.println("[SWITCH] Transitioning to UPLOAD PHASE");
+  Serial.printf("[SWITCH] Transitioning to UPLOAD PHASE\n");
 
   mesh.stop(); // stop all mesh operations during upload
 
@@ -147,7 +147,7 @@ void switchToMeshPhase() {
   taskBroadcastGatewayId.enable();
   taskSendDataRequests.enable();
 
-  Serial.println("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
+  Serial.printf("[GATEWAY] Node ID: %u\n", mesh.getNodeId());
 
   stateStartTime = millis();
 }
@@ -168,9 +168,9 @@ void uploadData() {
 
       int httpResponseCode = http.POST(payload);
       if (httpResponseCode > 0) {
-        Serial.println("[UPLOAD] HTTP Response: %d\n", httpResponseCode);
+        Serial.printf("[UPLOAD] HTTP Response: %d\n", httpResponseCode);
       } else {
-        Serial.println("[UPLOAD] HTTP POST failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
+        Serial.printf("[UPLOAD] HTTP POST failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
       }
       http.end();
     }
