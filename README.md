@@ -1,4 +1,4 @@
-# Smart Metering using Mesh Network
+# Smart Metering Mesh Network
 
 This repository contains the full development cycle of a **smart metering system** built on a **mesh network architecture**. The system is designed for **energy-efficient**, **secure**, and **scalable** data transmission from distributed smart meter nodes to a central gateway, using **multi-hop mesh communication** and **optional encryption**.
 
@@ -76,8 +76,17 @@ This project was developed in iterative phases, evolving from a basic mesh to a 
 
 ---
 
+## Demo and Logs
+
+📁 All relevant **logs**, **screenshots**, and **demo videos** are available at the following Google Drive link:
+👉 [View Drive Folder](https://drive.google.com/drive/folders/1_kZnW5KUoXkOMeAsIshU4q_OMFP1cx6c?usp=sharing)
+
+> *(Replace with your actual shared drive link.)*
+
+---
+
 ## Status
 
-* ✅ All major components implemented and tested.
-* ✅ Multi-hub mesh routing working stably.
-* ✅ Dashboard functional and responsive.
+* ✅ All major components implemented and tested
+* ✅ Multi-hub mesh routing working stably
+* ✅ Dashboard functional and responsive
