@@ -1,0 +1,27 @@
+# Deauthentication Attack Overview
+
+## 🔍 Description
+
+The deauthentication attack abuses a vulnerability in the 802.11 WiFi protocol where management frames (like deauthentication packets) are **unencrypted**.
+
+An attacker can spoof these packets to forcibly disconnect devices from their network — resulting in:
+- Denial of service
+- Interruption of access to the internet
+- User confusion or redirection
+
+## 🧪 Research Objective
+
+This firmware is used to:
+- Demonstrate wireless network vulnerability
+- Simulate real-world WiFi-based denial-of-service attacks
+- Study wireless client behavior in unprotected environments
+
+## 🧠 Educational Goal
+
+Understanding low-level packet-based vulnerabilities helps design **more secure wireless systems**, including protections like:
+- 802.11w (Protected Management Frames)
+- WPA3
+
+## ⚠️ Note
+
+This attack is **passive in discovery** but **active and disruptive in execution**. Only use in test environments or with clear authorization.
