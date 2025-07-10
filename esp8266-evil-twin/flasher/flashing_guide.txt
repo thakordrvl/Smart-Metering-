@@ -1,0 +1,39 @@
+# Flashing ESP8266 with Evil Twin Firmware
+
+---
+
+📥 TOOL REQUIRED:
+Download "ESP8266 Flash Download Tool v3.9.9" by Espressif:
+https://www.espressif.com/en/support/download/other-tools
+
+---
+
+💻 STEPS:
+
+1. Connect your ESP8266 device to the computer via USB.
+
+2. Launch the ESP8266 Download Tool and select:
+   - ChipType: ESP8266
+   - WorkMode: "Develop"
+   - Flash Tool
+
+3. Set Flash Parameters:
+   - Firmware path: evil_twin_firmware.bin
+   - Address: 0x00000
+   - Baud Rate: 115200 (or 460800 if supported)
+   - SPI Speed: 40 MHz
+   - SPI Mode: DIO
+   - Flash Size: 32Mbit
+
+4. Click **START** to begin flashing.
+
+---
+
+✅ After Flashing:
+
+- A new Wi-Fi AP will be created (e.g., "Evil Twin Setup")
+- Connect to it and go to: `http://192.168.4.1/admin`
+- Use the interface to select a real AP to clone
+- Launch the Evil Twin attack with one click
+
+> This setup is based on the Evil Twin firmware logic from DevilTwin-ESP8266.
