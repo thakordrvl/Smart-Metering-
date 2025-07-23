@@ -1,0 +1,25 @@
+# Evil Twin Attack Overview
+
+## 🔍 Description
+
+The **Evil Twin** attack is a wireless spoofing attack where an attacker sets up a **rogue access point** (AP) that mimics a legitimate one. Victims may connect to it thinking it’s real, exposing their traffic or credentials.
+
+## ⚙️ Attack Process
+
+1. The ESP8266 scans for nearby Wi-Fi networks.
+2. The user selects a target SSID via the web interface.
+3. The firmware clones the SSID and starts broadcasting.
+4. Victims may auto-connect to the rogue AP.
+5. Optionally, the ESP can host a fake login portal (not included here).
+
+## 🧪 Research Goal
+
+- Demonstrate vulnerabilities in public Wi-Fi environments.
+- Show how devices prioritize known SSIDs without validation.
+- Study user behavior in presence of duplicate SSIDs.
+
+## ⚠️ Legal Note
+
+This attack is highly intrusive and **must only be used in a controlled lab environment** or with **explicit permission**.
+
+Unauthorized deployment can be considered a criminal offense.

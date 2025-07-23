@@ -1,0 +1,6 @@
+# Ignore compiled files and temp folders
+__pycache__/
+*.pyc
+*.log
+*.DS_Store
+.vscode/

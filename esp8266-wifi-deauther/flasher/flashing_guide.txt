@@ -1,0 +1,25 @@
+# Flashing the WiFi Deauther Firmware to ESP8266
+
+Follow these steps to flash `wifi_deauther_firmware.bin` onto your ESP8266 NodeMCU board.
+
+---
+
+1. 📥 Download NodeMCU PyFlasher:
+   https://github.com/marcelstoer/nodemcu-pyflasher/releases
+
+2. 🔌 Connect your ESP8266 via USB.
+
+3. ⚙️ Open NodeMCU-PyFlasher and configure:
+   - Serial Port: (e.g., COM3 / /dev/ttyUSB0)
+   - Baud Rate: 115200
+   - Flash Mode: DOUT
+   - Firmware: `wifi_deauther_firmware.bin`
+
+4. 🔁 Click "Flash NodeMCU" and wait until complete.
+
+---
+
+✅ After flashing:
+- The device will broadcast a WiFi network (e.g., `pwned`)
+- Default password: `deauther`
+- Connect and visit `http://192.168.4.1` to access the web interface
