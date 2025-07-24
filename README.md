@@ -81,7 +81,6 @@ This project was developed in iterative phases, evolving from a basic mesh to a 
 📁 All relevant **logs**, **screenshots**, and **demo videos** are available at the following Google Drive link:
 👉 [View Drive Folder](https://drive.google.com/drive/folders/1_kZnW5KUoXkOMeAsIshU4q_OMFP1cx6c?usp=sharing)
 
-> *(Replace with your actual shared drive link.)*
 
 ---
 
